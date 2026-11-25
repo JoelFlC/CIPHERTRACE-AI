@@ -1,0 +1,27 @@
+# Python & ML environments
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local SQLite databases & environment files
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+
+# Frontend dependencies & production build output
+frontend/node_modules/
+frontend/dist/
+*.log
+
+# OS & editor artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

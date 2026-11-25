@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ciphertrace-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ciphertrace}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ciphertrace_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-ciphertrace_db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ciphertrace -d ciphertrace_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ciphertrace-net
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    container_name: ciphertrace-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://ciphertrace:ciphertrace_pass@db:5432/ciphertrace_db
+    volumes:
+      - ./backend/artifacts:/app/artifacts
+    networks:
+      - ciphertrace-net
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    container_name: ciphertrace-frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+    networks:
+      - ciphertrace-net
+    restart: unless-stopped
+
+networks:
+  ciphertrace-net:
+    driver: bridge
+
+volumes:
+  pgdata:
