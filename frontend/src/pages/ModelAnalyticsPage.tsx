@@ -331,6 +331,28 @@ export function ModelAnalyticsPage({ refreshTrigger }: ModelAnalyticsPageProps) 
               </div>
             ))}
           </div>
+
+          {sourceBreakdown.by_file &&
+            Object.keys(sourceBreakdown.by_file).length > 0 && (
+              <div className="mt-3 grid grid-cols-1 gap-2 border-t border-[#1F2937] pt-3 md:grid-cols-3">
+                {Object.entries(sourceBreakdown.by_file).map(
+                  ([fname, fileStats]) => (
+                    <div
+                      key={fname}
+                      className="rounded border border-[#1F2937] bg-[#0B0F19] px-3 py-2 text-xs"
+                    >
+                      <div className="mono-num truncate font-medium text-cyan-300">
+                        {fname}
+                      </div>
+                      <div className="mono-num mt-1 text-[11px] text-gray-300">
+                        {fileStats.total_loaded.toLocaleString('es-ES')} filas
+                        muestreadas
+                      </div>
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
         </section>
       )}
 

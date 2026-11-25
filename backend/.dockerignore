@@ -13,3 +13,6 @@ __pycache__
 .ruff_cache
 .env
 *.log
+data/raw/*.csv
+data/raw/*.parquet
+data/raw/*.zip

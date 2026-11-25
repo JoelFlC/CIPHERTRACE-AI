@@ -34,15 +34,19 @@ class GeneticOptimizer:
         X_val: np.ndarray,
         y_val_binary: np.ndarray,
         feature_names: list[str],
+        y_train_class: np.ndarray | None = None,
+        y_val_class: np.ndarray | None = None,
+        benign_class_id: int = 0,
         n_pop: int = 16,
         n_gen: int = 15,
         elitism: int = 2,
         mutation_rate: float = 0.08,
         min_features: int = 4,
     ) -> dict[str, Any]:
-        """Phase 1: Evolve binary feature masks maximizing F1 - 0.01 * (k / total_features)."""
+        """Phase 1: Evolve binary feature masks maximizing (0.5*Binary_F1 + 0.5*Macro_F1) - penalty."""
         n_features = X_train.shape[1]
         cache: dict[tuple[bool, ...], tuple[float, float]] = {}
+        use_multiclass = y_train_class is not None and y_val_class is not None
 
         def evaluate_mask(mask: np.ndarray) -> tuple[float, float]:
             key = tuple(bool(v) for v in mask)
@@ -50,13 +54,24 @@ class GeneticOptimizer:
                 return cache[key]
             clf = RandomForestClassifier(
                 n_estimators=20,
-                max_depth=8,
+                max_depth=10,
                 random_state=self.seed,
                 n_jobs=-1,
             )
-            clf.fit(X_train[:, mask], y_train_binary)
-            preds = clf.predict(X_val[:, mask])
-            f1 = float(f1_score(y_val_binary, preds, zero_division=0))
+            if use_multiclass:
+                assert y_train_class is not None and y_val_class is not None
+                clf.fit(X_train[:, mask], y_train_class)
+                cls_preds = clf.predict(X_val[:, mask])
+                bin_preds = (cls_preds != benign_class_id).astype(int)
+                bin_f1 = float(f1_score(y_val_binary, bin_preds, zero_division=0))
+                macro_f1 = float(
+                    f1_score(y_val_class, cls_preds, average="macro", zero_division=0)
+                )
+                f1 = 0.5 * bin_f1 + 0.5 * macro_f1
+            else:
+                clf.fit(X_train[:, mask], y_train_binary)
+                preds = clf.predict(X_val[:, mask])
+                f1 = float(f1_score(y_val_binary, preds, zero_division=0))
             penalty = 0.01 * (int(mask.sum()) / float(n_features))
             fitness = f1 - penalty
             cache[key] = (fitness, f1)

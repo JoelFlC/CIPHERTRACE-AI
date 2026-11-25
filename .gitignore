@@ -8,12 +8,15 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
-# Local SQLite databases & environment files
+# Databases, raw bulk datasets & environment files
 *.db
 *.sqlite
 *.sqlite3
 .env
 .env.*
+backend/data/raw/*.csv
+backend/data/raw/*.parquet
+backend/data/raw/*.zip
 
 # Frontend dependencies & production build output
 frontend/node_modules/

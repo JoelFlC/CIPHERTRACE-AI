@@ -128,7 +128,12 @@ export interface CaptureStartRequest {
 
 export interface DatasetSourceBreakdown {
   mode: 'public_only' | 'public_plus_lab' | 'statistical_fallback' | string;
+  max_samples_cap?: number;
   raw_files_detected: string[];
+  by_file?: Record<
+    string,
+    { total_loaded: number; by_class: Record<string, number> }
+  >;
   public_raw_flows: number;
   fallback_or_lab_flows: number;
   by_class: Record<string, { public_raw: number; fallback_or_lab: number }>;

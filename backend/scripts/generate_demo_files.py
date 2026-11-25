@@ -20,6 +20,7 @@ if str(BACKEND_DIR) not in sys.path:
 from app.core.config import (  # noqa: E402
     FEATURE_COLUMNS,
     METADATA_COLUMNS,
+    PROCESSED_DATASET_PATH,
     TARGET_BINARY_COL,
     TARGET_CLASS_COL,
 )
@@ -78,7 +79,18 @@ def generate_mixed_csv(output_path: Path, seed: int = 2025) -> Path:
         "EXFILTRATION": 6,
         "PHISHING_AITM": 6,
     }
-    frames = [_build_class_block(rng, label, count) for label, count in counts.items()]
+    processed_df = (
+        pd.read_csv(PROCESSED_DATASET_PATH) if PROCESSED_DATASET_PATH.exists() else None
+    )
+    frames: list[pd.DataFrame] = []
+    for label, count in counts.items():
+        if processed_df is not None:
+            subset = processed_df[processed_df[TARGET_CLASS_COL] == label]
+            if len(subset) >= count:
+                frames.append(subset.sample(n=count, random_state=seed))
+                continue
+        frames.append(_build_class_block(rng, label, count))
+
     df = pd.concat(frames, ignore_index=True)
     df = df.sample(frac=1.0, random_state=seed).reset_index(drop=True)
     df["flow_id"] = [f"demo-csv-{idx + 1:04d}" for idx in range(len(df))]

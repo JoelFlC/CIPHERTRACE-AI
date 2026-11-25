@@ -73,9 +73,10 @@ def run_training_pipeline() -> dict[str, Any]:
     )
 
     print("[2/5] Running Genetic Algorithm (Phase 1: Feature Selection)...")
-    X_tr_raw, X_val_raw, y_tr_bin, y_val_bin = train_test_split(
+    X_tr_raw, X_val_raw, y_tr_bin, y_val_bin, y_tr_cls, y_val_cls = train_test_split(
         X_raw,
         y_binary,
+        y_class,
         test_size=0.20,
         stratify=y_class,
         random_state=RANDOM_SEED,
@@ -91,6 +92,9 @@ def run_training_pipeline() -> dict[str, Any]:
         X_val=X_val_scaled,
         y_val_binary=y_val_bin,
         feature_names=FEATURE_COLUMNS,
+        y_train_class=y_tr_cls,
+        y_val_class=y_val_cls,
+        benign_class_id=benign_id,
         n_pop=16,
         n_gen=15,
     )
