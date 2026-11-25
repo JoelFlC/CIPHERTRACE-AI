@@ -97,6 +97,41 @@ export interface HealthResponse {
     threshold: number;
   };
   ws_connections: number;
+  live_capture_running?: boolean;
+}
+
+export interface CaptureInterfacesResponse {
+  interfaces: string[];
+  can_capture: boolean;
+  default_bpf_filter: string;
+}
+
+export interface CaptureStatus {
+  running: boolean;
+  can_capture: boolean;
+  interface: string;
+  bpf_filter: string;
+  window_seconds: number;
+  packets_captured: number;
+  flows_evaluated: number;
+  alerts_triggered: number;
+  started_at: string | null;
+  last_window_at: string | null;
+  last_error: string | null;
+}
+
+export interface CaptureStartRequest {
+  interface: string;
+  bpf_filter: string;
+  window_seconds: number;
+}
+
+export interface DatasetSourceBreakdown {
+  mode: 'public_only' | 'public_plus_lab' | 'statistical_fallback' | string;
+  raw_files_detected: string[];
+  public_raw_flows: number;
+  fallback_or_lab_flows: number;
+  by_class: Record<string, { public_raw: number; fallback_or_lab: number }>;
 }
 
 export interface ModelMetricEntry {
@@ -138,6 +173,7 @@ export interface ModelMetrics {
     selected_features_count: number;
     classes: string[];
     cv_folds: number;
+    source_breakdown?: DatasetSourceBreakdown;
   };
   models: {
     random_forest: ModelMetricEntry;

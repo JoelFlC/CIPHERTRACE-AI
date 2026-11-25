@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle2,
   Cpu,
+  Database,
   Dna,
   GitCompare,
   Loader2,
@@ -223,6 +224,7 @@ export function ModelAnalyticsPage({ refreshTrigger }: ModelAnalyticsPageProps) 
   const { model_metrics, ga_config } = data;
   const selectedSet = new Set(ga_config.selected_features);
   const cm = model_metrics.hybrid_ensemble.confusion_matrix;
+  const sourceBreakdown = model_metrics.dataset.source_breakdown;
 
   return (
     <div className="space-y-5">
@@ -279,6 +281,58 @@ export function ModelAnalyticsPage({ refreshTrigger }: ModelAnalyticsPageProps) 
           </div>
         </div>
       </section>
+
+      {/* Dataset Provenance & Auto-Ingestion Traceability */}
+      {sourceBreakdown && (
+        <section className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Database className="h-4 w-4 text-[#06B6D4]" />
+              <div>
+                <h2 className="text-sm font-semibold text-gray-100">
+                  Procedencia del Dataset de Entrenamiento (Trazabilidad)
+                </h2>
+                <p className="text-xs text-gray-400">
+                  Ingesta automática desde{' '}
+                  <span className="mono-num">backend/data/raw/</span> con
+                  respaldo estadístico controlado
+                </p>
+              </div>
+            </div>
+
+            <span
+              className={`mono-num rounded border px-2.5 py-1 text-xs font-medium ${
+                sourceBreakdown.mode === 'public_only'
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                  : sourceBreakdown.mode === 'public_plus_lab'
+                    ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300'
+                    : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+              }`}
+            >
+              {sourceBreakdown.mode === 'public_only'
+                ? '100% Datasets Públicos'
+                : sourceBreakdown.mode === 'public_plus_lab'
+                  ? 'Datasets Públicos + Laboratorio'
+                  : 'Respaldo Estadístico (data/raw/ vacía)'}
+            </span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            {Object.entries(sourceBreakdown.by_class).map(([cls, counts]) => (
+              <div
+                key={cls}
+                className="rounded border border-[#1F2937] bg-[#0B0F19] px-3 py-2 text-xs"
+              >
+                <div className="mono-num font-medium text-gray-200">{cls}</div>
+                <div className="mono-num mt-1 flex items-center justify-between text-[11px] text-gray-400">
+                  <span>Público: {counts.public_raw}</span>
+                  <span>Lab/Resp: {counts.fallback_or_lab}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Row 2: GA Convergence Chart + Feature Selection & Optimal Weights */}
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-12">

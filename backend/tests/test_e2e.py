@@ -50,9 +50,10 @@ def run_all_tests() -> None:
         assert all(health["loaded_artifacts"].values()), (
             f"Missing artifacts: {health['loaded_artifacts']}"
         )
+        assert "live_capture_running" in health
         print("[PASS] GET /api/health")
 
-        # 2. ML & GA metrics endpoint
+        # 2. ML & GA metrics endpoint + dataset provenance
         resp = client.get("/api/ml/metrics")
         assert resp.status_code == 200, f"/api/ml/metrics failed: {resp.text}"
         ml = resp.json()
@@ -61,9 +62,11 @@ def run_all_tests() -> None:
         assert "autoencoder" in ml["model_metrics"]["models"]
         assert "isolation_forest" in ml["model_metrics"]["models"]
         assert "hybrid_ensemble" in ml["model_metrics"]
+        assert "source_breakdown" in ml["model_metrics"]["dataset"]
         assert len(ml["ga_config"]["feature_columns"]) == 18
         assert len(ml["ga_config"]["selected_features"]) > 0
-        print("[PASS] GET /api/ml/metrics")
+        assert len(ml["ga_config"]["phase2_weight_optimization"]["history"]) == 20
+        print("[PASS] GET /api/ml/metrics (with source_breakdown & GA history)")
 
         # 3. Initial dashboard summary
         resp = client.get("/api/dashboard/summary")
@@ -82,7 +85,32 @@ def run_all_tests() -> None:
             assert key in summary, f"Missing summary key: {key}"
         print("[PASS] GET /api/dashboard/summary (initial)")
 
-        # 4. Controlled threat simulations (AiTM + C2)
+        # 4. Live passive capture endpoints (interfaces, status, start/stop permission check)
+        resp = client.get("/api/capture/interfaces")
+        assert resp.status_code == 200, f"/api/capture/interfaces failed: {resp.text}"
+        cap_ifaces = resp.json()
+        assert "any" in cap_ifaces["interfaces"]
+        assert isinstance(cap_ifaces["can_capture"], bool)
+
+        resp = client.get("/api/capture/status")
+        assert resp.status_code == 200, f"/api/capture/status failed: {resp.text}"
+        cap_status = resp.json()
+        assert cap_status["running"] is False
+
+        start_resp = client.post(
+            "/api/capture/start",
+            json={"interface": "lo", "bpf_filter": "tcp port 8000", "window_seconds": 2},
+        )
+        if cap_ifaces["can_capture"]:
+            assert start_resp.status_code == 200, f"capture start failed: {start_resp.text}"
+            stop_resp = client.post("/api/capture/stop")
+            assert stop_resp.status_code == 200
+            assert stop_resp.json()["running"] is False
+        else:
+            assert start_resp.status_code == 403
+        print("[PASS] /api/capture/* (interfaces, status, start/stop)")
+
+        # 5. Controlled threat simulations (AiTM + C2)
         for scenario in ("PHISHING_AITM", "C2_BEACONING"):
             resp = client.post(
                 "/api/lab/simulate",
@@ -96,7 +124,7 @@ def run_all_tests() -> None:
             assert len(sim["flows"][0]["top_contributing_features"]) == 3
         print("[PASS] POST /api/lab/simulate (PHISHING_AITM & C2_BEACONING)")
 
-        # 5. Passive file upload analysis (.csv & .pcap)
+        # 6. Passive file upload analysis (.csv & .pcap) — Offline mode
         with open(csv_path, "rb") as csv_fh:
             resp = client.post(
                 "/api/analyze/file",
@@ -119,7 +147,7 @@ def run_all_tests() -> None:
         assert len(pcap_res["flows"]) >= 5
         print("[PASS] POST /api/analyze/file (sample_capture.pcap)")
 
-        # 6. Local AiTM reverse-proxy login endpoint
+        # 7. Real local AiTM reverse-proxy HTTP relay & cookie capture
         resp = client.post(
             "/lab/aitm-proxy/login",
             json={"username": "estudiante.e2e@universidad.local"},
@@ -128,13 +156,14 @@ def run_all_tests() -> None:
         assert resp.status_code == 200, f"/lab/aitm-proxy/login failed: {resp.text}"
         aitm_res = resp.json()
         assert aitm_res["mode"] == "AITM_REVERSE_PROXY"
-        assert aitm_res["captured_session_token"].startswith("session_token_demo_")
+        assert aitm_res["captured_session_token"].startswith("legit_session_demo_")
+        assert aitm_res["redirect_count"] >= 3
         assert aitm_res["measured_double_hop_latency_ms"] >= 150.0
         assert aitm_res["risk_level"] in ("MEDIO", "ALTO")
         assert len(aitm_res["top_contributing_features"]) == 3
-        print("[PASS] POST /lab/aitm-proxy/login")
+        print("[PASS] POST /lab/aitm-proxy/login (real relay + cookie capture)")
 
-        # 7. Final dashboard summary & flows verification
+        # 8. Final dashboard summary & flows verification
         resp = client.get("/api/dashboard/summary")
         assert resp.status_code == 200
         final_summary = resp.json()
@@ -147,7 +176,7 @@ def run_all_tests() -> None:
         assert flows_payload["count"] > 0
         print("[PASS] GET /api/dashboard/summary & /api/flows (post-ingestion)")
 
-    print("\nALL E2E TESTS PASSED (7/7)")
+    print("\nALL E2E TESTS PASSED (8/8)")
 
 
 def test_e2e_suite() -> None:

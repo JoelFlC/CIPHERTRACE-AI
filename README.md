@@ -71,10 +71,10 @@ flowchart LR
 
 ## Las 4 Vistas de la Consola SOC
 
-1. **Live SOC Overview:** KPIs en vivo (*Flujos Analizados*, *Alertas Activas*, *Latencia Media*, *Tasa de Anomalía*), gráfica temporal de `risk_score`, distribución por vector de amenaza y tabla filtrable (`TODOS`, `ALTO`, `MEDIO`, `BAJO`) con **Drawer XAI** interactivo por flujo.
-2. **Laboratorio AiTM & Inyección:** inyección controlada de los 5 escenarios (`POST /api/lab/simulate`), portales locales comparativos (`Portal Legítimo` vs. `Proxy Inverso AiTM`), guía paso a paso y feed WebSocket en tiempo real.
-3. **Motor IA & Algoritmo Genético:** curvas de convergencia generacional del AG (Fase 1 y Fase 2), mapa visual de atributos seleccionados/descartados, pesos óptimos, matriz de confusión y comparativa `k=5`.
-4. **Inspector Pasivo PCAP / CSV:** carga *Drag & Drop* de archivos `.pcap`, `.pcapng` y `.csv` hacia `POST /api/analyze/file` con desglose de detecciones flujo por flujo.
+1. **Live SOC Overview:** incluye el panel **Sensor Híbrido (Captura Pasiva En Vivo / Offline)** para iniciar o detener la captura pasiva en tiempo real sobre interfaces de red (`scapy.sniff`), KPIs en vivo (*Flujos Analizados*, *Alertas Activas*, *Latencia Media*, *Tasa de Anomalía*), gráfica temporal de `risk_score`, distribución por vector de amenaza y tabla filtrable (`TODOS`, `ALTO`, `MEDIO`, `BAJO`) con **Drawer XAI** interactivo.
+2. **Laboratorio AiTM & Inyección:** inyección controlada de los 5 escenarios (`POST /api/lab/simulate`), portales locales comparativos (`Portal Legítimo` vs. `Proxy Inverso AiTM` con relay HTTP real e interceptación de cookie), guía paso a paso y feed WebSocket en tiempo real.
+3. **Motor IA & Algoritmo Genético:** procedencia trazable del dataset (`backend/data/raw/` vs. respaldo estadístico), curvas de convergencia generacional del AG (Fase 1 y Fase 2), mapa visual de atributos seleccionados/descartados, pesos óptimos, matriz de confusión y comparativa `k=5`.
+4. **Inspector Pasivo PCAP / CSV (Modo Offline):** carga *Drag & Drop* de archivos `.pcap`, `.pcapng` y `.csv` hacia `POST /api/analyze/file` con desglose de detecciones flujo por flujo.
 
 ---
 
@@ -90,10 +90,16 @@ cd CIPHERTRACE-AI
 docker compose up -d --build
 ```
 
-Esto levanta automáticamente 3 contenedores conectados en la red `ciphertrace-net`:
+Esto levanta automáticamente 3 contenedores conectados en la red `ciphertrace-net` con puertos estándar (`8000` y `5173`):
 - **`ciphertrace-db`**: PostgreSQL 16 (`ciphertrace_db`) con persistencia en el volumen `pgdata` y `healthcheck`.
-- **`ciphertrace-backend`**: FastAPI + Uvicorn en `:8000` (crea las tablas al arrancar con reintentos y reutiliza `./backend/artifacts`).
+- **`ciphertrace-backend`**: FastAPI + Uvicorn en `:8000` con capacidades `NET_RAW` / `NET_ADMIN` para captura pasiva en vivo, creación automática de tablas y montaje de `./backend/artifacts` y `./backend/data/raw`.
 - **`ciphertrace-frontend`**: React + Nginx en `:5173`.
+
+#### Perfil Opcional en Linux (`host-capture`) para Capturar la Interfaz Física Real (`eth0` / `wlan0`)
+Si deseas capturar directamente el tráfico de la tarjeta física de red de tu equipo Linux desde Docker:
+```bash
+docker compose --profile host-capture up -d --build db backend-host frontend
+```
 
 **Comandos útiles del día a día:**
 ```bash
@@ -149,12 +155,22 @@ npm run dev
 | `GET` | `/api/flows` | Flujos analizados y alertas recientes (`limit`, `risk_level`) |
 | `GET` | `/api/ml/metrics` | Métricas `k=5` de modelos e historial de convergencia del AG |
 | `POST` | `/api/lab/simulate` | Inyección controlada de tráfico (`BENIGN`, `C2_BEACONING`, `DOH_TUNNEL`, `EXFILTRATION`, `PHISHING_AITM`) |
-| `POST` | `/api/analyze/file` | Análisis pasivo de capturas `.pcap`, `.pcapng` o `.csv` |
+| `POST` | `/api/analyze/file` | Análisis pasivo offline de capturas `.pcap`, `.pcapng` o `.csv` |
+| `GET` | `/api/capture/interfaces` | Lista de interfaces y verificación de privilegios `CAP_NET_RAW` |
+| `POST` | `/api/capture/start` | Inicia la captura pasiva en vivo por ventanas sin descifrar payload |
+| `POST` | `/api/capture/stop` | Detiene la captura pasiva en vivo |
 | `WS` | `/ws/alerts` | Stream WebSocket en tiempo real de flujos evaluados y alertas |
 
 ---
 
-## Muestras de Demo y Suite End-to-End
+## Datasets Públicos, Muestras de Demo y Suite End-to-End
+
+Para entrenar con datasets públicos reales (`CIC-IDS2017`, `CTU-13`, `BCCC-CIRA-CIC-DoHBrw-2020`), coloca los `.csv` en `backend/data/raw/` y ejecuta:
+
+```bash
+backend/.venv/bin/python backend/scripts/prepare_public_datasets.py --train
+```
+*(Si `backend/data/raw/` está vacía o faltan clases como `PHISHING_AITM`, el pipeline usa respaldo estadístico/de laboratorio y registra la procedencia exacta en `model_metrics.json`.)*
 
 El proyecto incluye un generador de capturas reales (`.csv` y `.pcap` construido con Scapy) en `demo_samples/` y pruebas End-to-End automatizadas:
 
@@ -162,7 +178,7 @@ El proyecto incluye un generador de capturas reales (`.csv` y `.pcap` construido
 # Generar demo_samples/mixed_traffic_demo.csv (40 flujos) y sample_capture.pcap (5 flujos)
 backend/.venv/bin/python backend/scripts/generate_demo_files.py
 
-# Ejecutar la suite completa End-to-End (7/7 validaciones)
+# Ejecutar la suite completa End-to-End (8/8 validaciones)
 backend/.venv/bin/python backend/tests/test_e2e.py
 ```
 

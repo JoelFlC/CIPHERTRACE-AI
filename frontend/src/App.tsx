@@ -7,13 +7,19 @@ import { ModelAnalyticsPage } from './pages/ModelAnalyticsPage';
 import { OverviewPage } from './pages/OverviewPage';
 import { ThreatLabPage } from './pages/ThreatLabPage';
 import {
+  fetchCaptureInterfaces,
+  fetchCaptureStatus,
   fetchDashboardSummary,
   fetchFlows,
   fetchHealth,
+  startLiveCapture,
+  stopLiveCapture,
   useAlertWebSocket,
 } from './services/api';
 import type {
   AnalyzedFlow,
+  CaptureInterfacesResponse,
+  CaptureStatus,
   DashboardSummary,
   HealthResponse,
   LiveFeedItem,
@@ -48,6 +54,11 @@ export function App() {
   const [flows, setFlows] = useState<AnalyzedFlow[]>([]);
   const [labFeed, setLabFeed] = useState<LiveFeedItem[]>([]);
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [captureStatus, setCaptureStatus] = useState<CaptureStatus | null>(null);
+  const [captureInterfaces, setCaptureInterfaces] =
+    useState<CaptureInterfacesResponse | null>(null);
+  const [captureBusy, setCaptureBusy] = useState<boolean>(false);
+  const [captureError, setCaptureError] = useState<string | null>(null);
 
   const [selectedFlow, setSelectedFlow] = useState<AnalyzedFlow | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -63,15 +74,20 @@ export function App() {
     }
 
     try {
-      const [healthRes, summaryRes, flowsRes] = await Promise.all([
-        fetchHealth(),
-        fetchDashboardSummary(),
-        fetchFlows(100, 'ALL'),
-      ]);
+      const [healthRes, summaryRes, flowsRes, capIfacesRes, capStatusRes] =
+        await Promise.all([
+          fetchHealth(),
+          fetchDashboardSummary(),
+          fetchFlows(100, 'ALL'),
+          fetchCaptureInterfaces(),
+          fetchCaptureStatus(),
+        ]);
 
       setHealth(healthRes);
       setSummary(summaryRes);
       setFlows(flowsRes.flows);
+      setCaptureInterfaces(capIfacesRes);
+      setCaptureStatus(capStatusRes);
       setLabFeed((prev) => {
         if (prev.length > 0) return prev;
         return flowsRes.flows.slice(0, 30).map((flow) => ({
@@ -171,6 +187,59 @@ export function App() {
       });
   }, []);
 
+  useEffect(() => {
+    if (!captureStatus?.running) return;
+    const timer = window.setInterval(() => {
+      void fetchCaptureStatus()
+        .then((res) => setCaptureStatus(res))
+        .catch(() => {});
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [captureStatus?.running]);
+
+  const handleStartCapture = async (
+    iface: string,
+    bpf: string,
+    windowSeconds: number,
+  ) => {
+    setCaptureBusy(true);
+    setCaptureError(null);
+    try {
+      const statusRes = await startLiveCapture({
+        interface: iface,
+        bpf_filter: bpf,
+        window_seconds: windowSeconds,
+      });
+      setCaptureStatus(statusRes);
+    } catch (err) {
+      setCaptureError(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo iniciar la captura pasiva en vivo.',
+      );
+    } finally {
+      setCaptureBusy(false);
+    }
+  };
+
+  const handleStopCapture = async () => {
+    setCaptureBusy(true);
+    setCaptureError(null);
+    try {
+      const statusRes = await stopLiveCapture();
+      setCaptureStatus(statusRes);
+      syncSummaryFromServer();
+    } catch (err) {
+      setCaptureError(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo detener la captura en vivo.',
+      );
+    } finally {
+      setCaptureBusy(false);
+    }
+  };
+
   const headerMeta = VIEW_HEADERS[activeView];
   const threshold = health?.hybrid_weights.threshold ?? 0.5;
 
@@ -183,6 +252,7 @@ export function App() {
         onReconnectWs={reconnectWs}
         activeAlertsCount={summary?.active_alerts ?? 0}
         health={health}
+        captureStatus={captureStatus}
         mobileOpen={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
       />
@@ -242,6 +312,14 @@ export function App() {
               loading={loading}
               error={apiError}
               threshold={threshold}
+              captureStatus={captureStatus}
+              captureInterfaces={captureInterfaces}
+              captureBusy={captureBusy}
+              captureError={captureError}
+              onStartCapture={(iface, bpf, win) =>
+                void handleStartCapture(iface, bpf, win)
+              }
+              onStopCapture={() => void handleStopCapture()}
               onSelectFlow={setSelectedFlow}
             />
           )}

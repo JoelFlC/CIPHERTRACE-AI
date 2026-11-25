@@ -7,6 +7,7 @@ import {
   X,
 } from 'lucide-react';
 import type {
+  CaptureStatus,
   HealthResponse,
   NavView,
   WsConnectionStatus,
@@ -19,6 +20,7 @@ interface SidebarProps {
   onReconnectWs: () => void;
   activeAlertsCount: number;
   health: HealthResponse | null;
+  captureStatus: CaptureStatus | null;
   mobileOpen: boolean;
   onCloseMobile: () => void;
 }
@@ -64,6 +66,7 @@ export function Sidebar({
   onReconnectWs,
   activeAlertsCount,
   health,
+  captureStatus,
   mobileOpen,
   onCloseMobile,
 }: SidebarProps) {
@@ -229,7 +232,22 @@ export function Sidebar({
         </nav>
 
         {/* Footer Engine Status */}
-        <div className="border-t border-[#1F2937] p-3">
+        <div className="border-t border-[#1F2937] p-3 space-y-2">
+          <div className="rounded-md border border-[#1F2937] bg-[#111827] px-3 py-2 text-[11px]">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-400">Sensor Híbrido</span>
+              <span
+                className={`mono-num font-semibold ${
+                  captureStatus?.running ? 'text-emerald-400' : 'text-cyan-300'
+                }`}
+              >
+                {captureStatus?.running
+                  ? `EN VIVO (${captureStatus.interface})`
+                  : 'OFFLINE / LAB'}
+              </span>
+            </div>
+          </div>
+
           <div className="rounded-md border border-[#1F2937] bg-[#111827] p-3">
             <div className="flex items-center justify-between text-xs">
               <span className="font-medium text-gray-300">Motor Híbrido</span>

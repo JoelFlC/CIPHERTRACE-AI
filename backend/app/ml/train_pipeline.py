@@ -33,7 +33,7 @@ from app.core.config import (
     ensure_directories,
 )
 from app.ml.autoencoder import TabularAutoencoderDetector
-from app.ml.dataset_builder import build_or_load_dataset
+from app.ml.dataset_builder import build_or_load_dataset_with_metadata
 from app.ml.genetic_optimizer import GeneticOptimizer
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -61,7 +61,7 @@ def run_training_pipeline() -> dict[str, Any]:
     ensure_directories()
 
     print("[1/5] Building/loading standardized passive metadata dataset...")
-    df = build_or_load_dataset(force_rebuild=True)
+    df, source_breakdown = build_or_load_dataset_with_metadata(force_rebuild=True)
     X_raw = df[FEATURE_COLUMNS].to_numpy(dtype=np.float64)
     y_class = df[TARGET_CLASS_COL].map(LABEL_TO_ID).to_numpy(dtype=int)
     y_binary = df[TARGET_BINARY_COL].to_numpy(dtype=int)
@@ -220,6 +220,7 @@ def run_training_pipeline() -> dict[str, Any]:
             "selected_features_count": int(ga_mask.sum()),
             "classes": LABEL_CLASSES,
             "cv_folds": 5,
+            "source_breakdown": source_breakdown,
         },
         "models": {
             "random_forest": _compute_binary_metrics(

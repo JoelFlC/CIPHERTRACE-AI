@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
+  CaptureInterfacesResponse,
+  CaptureStartRequest,
+  CaptureStatus,
   DashboardSummary,
   FileAnalysisResponse,
   FlowsResponse,
@@ -88,6 +91,30 @@ export function analyzeFile(file: File): Promise<FileAnalysisResponse> {
   return apiRequest<FileAnalysisResponse>('/analyze/file', {
     method: 'POST',
     body: formData,
+  });
+}
+
+export function fetchCaptureInterfaces(): Promise<CaptureInterfacesResponse> {
+  return apiRequest<CaptureInterfacesResponse>('/capture/interfaces');
+}
+
+export function fetchCaptureStatus(): Promise<CaptureStatus> {
+  return apiRequest<CaptureStatus>('/capture/status');
+}
+
+export function startLiveCapture(
+  payload: CaptureStartRequest,
+): Promise<CaptureStatus> {
+  return apiRequest<CaptureStatus>('/capture/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function stopLiveCapture(): Promise<CaptureStatus> {
+  return apiRequest<CaptureStatus>('/capture/stop', {
+    method: 'POST',
   });
 }
 

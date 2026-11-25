@@ -62,10 +62,10 @@
     "redirect_count"
   ],
   "weights": {
-    "w_mlp": 0.75,
-    "w_ae": 0.25
+    "w_mlp": 0.8823,
+    "w_ae": 0.1177
   },
-  "threshold": 0.5,
+  "threshold": 0.5667,
   "phase1_feature_selection": {
     "best_fitness": 0.997778,
     "best_f1": 1.0,
@@ -306,162 +306,162 @@
       {
         "generation": 1,
         "best_f1": 0.999,
-        "avg_f1": 0.991441,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.990954,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 2,
         "best_f1": 0.999,
-        "avg_f1": 0.998286,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998223,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 3,
         "best_f1": 0.999,
-        "avg_f1": 0.998875,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998847,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 4,
         "best_f1": 0.999,
-        "avg_f1": 0.998952,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998931,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 5,
         "best_f1": 0.999,
-        "avg_f1": 0.998959,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998973,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 6,
         "best_f1": 0.999,
-        "avg_f1": 0.998993,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998986,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 7,
         "best_f1": 0.999,
-        "avg_f1": 0.998952,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998959,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 8,
         "best_f1": 0.999,
-        "avg_f1": 0.998986,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998993,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 9,
         "best_f1": 0.999,
-        "avg_f1": 0.998959,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998952,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 10,
         "best_f1": 0.999,
-        "avg_f1": 0.998938,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998959,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 11,
         "best_f1": 0.999,
         "avg_f1": 0.998979,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 12,
         "best_f1": 0.999,
-        "avg_f1": 0.998959,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998952,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 13,
         "best_f1": 0.999,
-        "avg_f1": 0.998952,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998903,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 14,
         "best_f1": 0.999,
-        "avg_f1": 0.998993,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998986,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 15,
         "best_f1": 0.999,
-        "avg_f1": 0.998973,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998979,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 16,
         "best_f1": 0.999,
-        "avg_f1": 0.998966,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998959,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 17,
         "best_f1": 0.999,
-        "avg_f1": 0.998959,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998931,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 18,
         "best_f1": 0.999,
-        "avg_f1": 0.998986,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998973,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 19,
         "best_f1": 0.999,
-        "avg_f1": 0.998924,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998896,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       },
       {
         "generation": 20,
         "best_f1": 0.999,
-        "avg_f1": 0.998924,
-        "best_w_mlp": 0.75,
-        "best_w_ae": 0.25,
-        "best_threshold": 0.5
+        "avg_f1": 0.998931,
+        "best_w_mlp": 0.8823,
+        "best_w_ae": 0.1177,
+        "best_threshold": 0.5667
       }
     ]
   }

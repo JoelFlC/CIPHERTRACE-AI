@@ -14,6 +14,7 @@ from app.core.config import ensure_directories
 from app.db.database import init_db
 from app.lab.aitm_lab import router as lab_router
 from app.services.inference_engine import engine
+from app.services.live_sniffer import live_sniffer
 
 
 @asynccontextmanager
@@ -22,7 +23,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     ensure_directories()
     init_db(max_retries=5, retry_delay=2.0)
     engine.load_artifacts()
-    yield
+    try:
+        yield
+    finally:
+        live_sniffer.stop()
 
 
 app = FastAPI(

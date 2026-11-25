@@ -1,9 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
   Clock,
+  Loader2,
+  Play,
+  Radio,
   ShieldAlert,
+  Square,
   TrendingUp,
 } from 'lucide-react';
 import {
@@ -25,6 +29,8 @@ import {
   THREAT_LABELS,
   THREAT_VECTORS,
   type AnalyzedFlow,
+  type CaptureInterfacesResponse,
+  type CaptureStatus,
   type DashboardSummary,
   type RiskFilter,
 } from '../types/ciphertrace';
@@ -35,6 +41,12 @@ interface OverviewPageProps {
   loading: boolean;
   error: string | null;
   threshold: number;
+  captureStatus: CaptureStatus | null;
+  captureInterfaces: CaptureInterfacesResponse | null;
+  captureBusy: boolean;
+  captureError: string | null;
+  onStartCapture: (iface: string, bpf: string, windowSeconds: number) => void;
+  onStopCapture: () => void;
   onSelectFlow: (flow: AnalyzedFlow) => void;
 }
 
@@ -122,9 +134,32 @@ export function OverviewPage({
   loading,
   error,
   threshold,
+  captureStatus,
+  captureInterfaces,
+  captureBusy,
+  captureError,
+  onStartCapture,
+  onStopCapture,
   onSelectFlow,
 }: OverviewPageProps) {
   const [riskFilter, setRiskFilter] = useState<RiskFilter>('TODOS');
+  const [selectedIface, setSelectedIface] = useState<string>('any');
+  const [bpfFilter, setBpfFilter] = useState<string>(
+    'tcp port 443 or tcp port 8443 or udp port 53 or tcp port 8000',
+  );
+  const [windowSeconds, setWindowSeconds] = useState<number>(4);
+
+  useEffect(() => {
+    if (captureInterfaces?.default_bpf_filter) {
+      setBpfFilter((prev) => prev || captureInterfaces.default_bpf_filter);
+    }
+    if (
+      captureInterfaces?.interfaces?.length &&
+      !captureInterfaces.interfaces.includes(selectedIface)
+    ) {
+      setSelectedIface(captureInterfaces.interfaces[0]);
+    }
+  }, [captureInterfaces, selectedIface]);
 
   const timelineData = useMemo<TimelinePoint[]>(() => {
     return [...flows]
@@ -195,6 +230,169 @@ export function OverviewPage({
           No se pudo sincronizar completamente con el backend: {error}
         </div>
       )}
+
+      {/* Hybrid Operation Bar: Live Passive Capture vs Offline */}
+      <section className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span
+              className={`flex h-8 w-8 items-center justify-center rounded border ${
+                captureStatus?.running
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                  : 'border-cyan-500/30 bg-cyan-500/10 text-[#06B6D4]'
+              }`}
+            >
+              <Radio className="h-4 w-4" />
+            </span>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-semibold text-gray-100">
+                  Sensor Híbrido (Captura Pasiva En Vivo / Offline)
+                </h2>
+                <span
+                  className={`mono-num rounded border px-2 py-0.5 text-[10px] font-semibold ${
+                    captureStatus?.running
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                      : 'border-[#1F2937] bg-[#0B0F19] text-gray-400'
+                  }`}
+                >
+                  {captureStatus?.running ? 'MODO EN VIVO ACTIVO' : 'MODO OFFLINE / ESPERA'}
+                </span>
+              </div>
+              <p className="text-xs text-gray-400">
+                Sniffer pasivo por ventanas sin descifrar carga útil, complementario al Inspector PCAP/CSV
+              </p>
+            </div>
+          </div>
+
+          {captureStatus && (
+            <div className="mono-num flex flex-wrap items-center gap-4 text-xs text-gray-300">
+              <span>
+                Paquetes:{' '}
+                <strong className="text-gray-100">
+                  {captureStatus.packets_captured.toLocaleString('es-ES')}
+                </strong>
+              </span>
+              <span>
+                Flujos:{' '}
+                <strong className="text-cyan-300">
+                  {captureStatus.flows_evaluated.toLocaleString('es-ES')}
+                </strong>
+              </span>
+              <span>
+                Alertas:{' '}
+                <strong className="text-red-400">
+                  {captureStatus.alerts_triggered.toLocaleString('es-ES')}
+                </strong>
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 gap-2.5 border-t border-[#1F2937] pt-3 lg:grid-cols-12">
+          <div className="lg:col-span-3">
+            <label
+              htmlFor="capture-iface"
+              className="mb-1 block text-[11px] text-gray-400"
+            >
+              Interfaz de red
+            </label>
+            <select
+              id="capture-iface"
+              disabled={captureStatus?.running || captureBusy}
+              value={selectedIface}
+              onChange={(e) => setSelectedIface(e.target.value)}
+              className="mono-num w-full rounded border border-[#1F2937] bg-[#0B0F19] px-2.5 py-1.5 text-xs text-gray-200 disabled:opacity-60"
+            >
+              {(captureInterfaces?.interfaces ?? ['any', 'lo']).map((iface) => (
+                <option key={iface} value={iface}>
+                  {iface}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="lg:col-span-5">
+            <label
+              htmlFor="capture-bpf"
+              className="mb-1 block text-[11px] text-gray-400"
+            >
+              Filtro BPF (solo puertos TLS/DNS/Lab)
+            </label>
+            <input
+              id="capture-bpf"
+              type="text"
+              disabled={captureStatus?.running || captureBusy}
+              value={bpfFilter}
+              onChange={(e) => setBpfFilter(e.target.value)}
+              className="mono-num w-full rounded border border-[#1F2937] bg-[#0B0F19] px-2.5 py-1.5 text-xs text-gray-200 disabled:opacity-60"
+            />
+          </div>
+
+          <div className="lg:col-span-2">
+            <label
+              htmlFor="capture-window"
+              className="mb-1 block text-[11px] text-gray-400"
+            >
+              Ventana (s)
+            </label>
+            <select
+              id="capture-window"
+              disabled={captureStatus?.running || captureBusy}
+              value={windowSeconds}
+              onChange={(e) => setWindowSeconds(Number(e.target.value))}
+              className="mono-num w-full rounded border border-[#1F2937] bg-[#0B0F19] px-2.5 py-1.5 text-xs text-gray-200 disabled:opacity-60"
+            >
+              <option value={3}>3 s</option>
+              <option value={4}>4 s</option>
+              <option value={5}>5 s</option>
+              <option value={10}>10 s</option>
+            </select>
+          </div>
+
+          <div className="flex items-end lg:col-span-2">
+            {captureStatus?.running ? (
+              <button
+                type="button"
+                disabled={captureBusy}
+                onClick={onStopCapture}
+                className="flex w-full items-center justify-center gap-1.5 rounded border border-red-500/40 bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/25 disabled:opacity-50"
+              >
+                {captureBusy ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Square className="h-3.5 w-3.5" />
+                )}
+                <span>Detener En Vivo</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={captureBusy || captureInterfaces?.can_capture === false}
+                onClick={() =>
+                  onStartCapture(selectedIface, bpfFilter, windowSeconds)
+                }
+                className="flex w-full items-center justify-center gap-1.5 rounded border border-cyan-500/40 bg-cyan-500/15 px-3 py-1.5 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {captureBusy ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Play className="h-3.5 w-3.5" />
+                )}
+                <span>Iniciar En Vivo</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {(captureError || captureStatus?.last_error || captureInterfaces?.can_capture === false) && (
+          <div className="mt-2.5 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
+            {captureError ??
+              captureStatus?.last_error ??
+              'Captura en vivo deshabilitada en este proceso (requiere CAP_NET_RAW / Docker Compose). El modo offline PCAP/CSV y el laboratorio AiTM siguen operativos.'}
+          </div>
+        )}
+      </section>
 
       {/* Row 1: 4 KPI Cards */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

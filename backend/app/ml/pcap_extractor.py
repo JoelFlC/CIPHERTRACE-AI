@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -123,13 +124,11 @@ def _canonical_flow_key(
     return (ep_b, ep_a, proto)
 
 
-def extract_flows_from_pcap(pcap_path: str | Path) -> list[dict[str, Any]]:
-    """Read a .pcap/.pcapng file passively and extract 18 standard metadata features per flow."""
-    path = Path(pcap_path)
-    if not path.exists():
-        raise FileNotFoundError(f"PCAP file not found: {path}")
-
-    packets = rdpcap(str(path))
+def extract_flows_from_packets(
+    packets: Sequence[Any],
+    flow_prefix: str = "pcap",
+) -> list[dict[str, Any]]:
+    """Extract 18 passive metadata features per flow from an in-memory packet sequence."""
     grouped: dict[tuple[tuple[str, int], tuple[str, int], str], list[dict[str, Any]]] = (
         defaultdict(list)
     )
@@ -318,7 +317,7 @@ def extract_flows_from_pcap(pcap_path: str | Path) -> list[dict[str, Any]]:
 
         extracted.append(
             {
-                "flow_id": f"{path.stem}-flow-{flow_idx:05d}",
+                "flow_id": f"{flow_prefix}-flow-{flow_idx:05d}",
                 "src_ip": orig_src_ip,
                 "dst_ip": orig_dst_ip,
                 "src_port": orig_src_port,
@@ -330,6 +329,16 @@ def extract_flows_from_pcap(pcap_path: str | Path) -> list[dict[str, Any]]:
         )
 
     return extracted
+
+
+def extract_flows_from_pcap(pcap_path: str | Path) -> list[dict[str, Any]]:
+    """Read a .pcap/.pcapng file passively and extract 18 standard metadata features per flow."""
+    path = Path(pcap_path)
+    if not path.exists():
+        raise FileNotFoundError(f"PCAP file not found: {path}")
+
+    packets = rdpcap(str(path))
+    return extract_flows_from_packets(packets, flow_prefix=path.stem)
 
 
 def flows_to_dataframe(flows: list[dict[str, Any]]) -> pd.DataFrame:

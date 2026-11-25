@@ -167,8 +167,6 @@ class GeneticOptimizer:
                 self.rng.uniform(0.15, 0.85, size=n_pop),
             ]
         )
-        # Seed one balanced baseline chromosome
-        population[0] = np.array([0.75, 0.50])
 
         history: list[dict[str, Any]] = []
         best_gene = population[0].copy()

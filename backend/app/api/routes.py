@@ -35,6 +35,11 @@ from app.db.models import AnalyzedFlow, SecurityAlert, persist_evaluation
 from app.ml.dataset_builder import _map_external_dataframe
 from app.ml.pcap_extractor import extract_flows_from_pcap
 from app.services.inference_engine import engine
+from app.services.live_sniffer import (
+    DEFAULT_BPF_FILTER,
+    list_network_interfaces,
+    live_sniffer,
+)
 from app.services.threat_simulator import generate_simulated_flows
 from app.services.ws_manager import ws_manager
 
@@ -50,6 +55,14 @@ class SimulateRequest(BaseModel):
     )
     count: int = Field(default=5, ge=1, le=50)
     delay_ms: int = Field(default=100, ge=0, le=2000)
+
+
+class CaptureStartRequest(BaseModel):
+    """Configuration for live passive network capture."""
+
+    interface: str = Field(default="any")
+    bpf_filter: str = Field(default=DEFAULT_BPF_FILTER)
+    window_seconds: int = Field(default=4, ge=1, le=30)
 
 
 @router.get("/health")
@@ -74,6 +87,7 @@ async def get_health() -> dict[str, Any]:
             "threshold": engine.threshold,
         },
         "ws_connections": len(ws_manager.active_connections),
+        "live_capture_running": live_sniffer.is_running,
     }
 
 
@@ -311,6 +325,48 @@ async def simulate_threat_flows(
         "flows": evaluated_flows,
         "alerts": alerts_generated,
     }
+
+
+@router.get("/capture/interfaces")
+async def get_capture_interfaces() -> dict[str, Any]:
+    """List network interfaces and live passive capture capability."""
+    from app.services.live_sniffer import has_capture_privileges
+
+    return {
+        "interfaces": list_network_interfaces(),
+        "can_capture": has_capture_privileges(),
+        "default_bpf_filter": DEFAULT_BPF_FILTER,
+    }
+
+
+@router.get("/capture/status")
+async def get_capture_status() -> dict[str, Any]:
+    """Return current live passive capture status and metrics."""
+    return live_sniffer.status()
+
+
+@router.post("/capture/start")
+async def start_live_capture(payload: CaptureStartRequest) -> dict[str, Any]:
+    """Start live passive Scapy capture in the background without payload decryption."""
+    engine.ensure_loaded()
+    loop = asyncio.get_running_loop()
+    try:
+        return live_sniffer.start(
+            interface=payload.interface,
+            bpf_filter=payload.bpf_filter,
+            window_seconds=payload.window_seconds,
+            loop=loop,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/capture/stop")
+async def stop_live_capture() -> dict[str, Any]:
+    """Stop live passive Scapy capture."""
+    return live_sniffer.stop()
 
 
 ws_router = APIRouter(tags=["CIPHERTRACE WebSocket"])

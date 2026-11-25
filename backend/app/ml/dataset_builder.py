@@ -479,6 +479,104 @@ def generate_synthetic_dataset(
     return dataset[ordered_cols]
 
 
+def build_or_load_dataset_with_metadata(
+    force_rebuild: bool = False,
+    n_samples: int = 6000,
+    seed: int = RANDOM_SEED,
+    save_path: Path = PROCESSED_DATASET_PATH,
+    raw_dir: Path = RAW_DATA_DIR,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Auto-ingest public CSVs from data/raw/ if present and fall back/supplement cleanly."""
+    ensure_directories()
+
+    raw_files = sorted(raw_dir.glob("*.csv"))
+    raw_filenames = [path.name for path in raw_files]
+    external = load_external_csvs(raw_dir) if raw_files else None
+
+    if external is not None and not external.empty:
+        rng = np.random.default_rng(seed)
+        target_per_class = {
+            "BENIGN": max(1500, n_samples // 2),
+            "C2_BEACONING": max(750, n_samples // 8),
+            "DOH_TUNNEL": max(750, n_samples // 8),
+            "EXFILTRATION": max(750, n_samples // 8),
+            "PHISHING_AITM": max(750, n_samples // 8),
+        }
+
+        frames: list[pd.DataFrame] = []
+        by_class: dict[str, dict[str, int]] = {}
+        public_total = 0
+        fallback_total = 0
+
+        for label in LABEL_CLASSES:
+            subset = external[external[TARGET_CLASS_COL] == label]
+            target_n = target_per_class[label]
+            if len(subset) > target_n:
+                subset = subset.sample(n=target_n, random_state=seed)
+
+            pub_count = int(len(subset))
+            if pub_count > 0:
+                frames.append(subset)
+                public_total += pub_count
+
+            missing = max(0, target_n - pub_count)
+            if missing > 0:
+                lab_block = _build_class_block(rng, label, missing)
+                frames.append(lab_block)
+                fallback_total += missing
+
+            by_class[label] = {
+                "public_raw": pub_count,
+                "fallback_or_lab": missing,
+            }
+
+        combined = pd.concat(frames, ignore_index=True)
+        combined = combined.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+        combined["flow_id"] = [f"flow-{i:06d}" for i in range(len(combined))]
+        ordered_cols = METADATA_COLUMNS + FEATURE_COLUMNS + [TARGET_CLASS_COL, TARGET_BINARY_COL]
+        combined = combined[ordered_cols]
+        combined.to_csv(save_path, index=False)
+
+        mode = "public_only" if fallback_total == 0 else "public_plus_lab"
+        return combined, {
+            "mode": mode,
+            "raw_files_detected": raw_filenames,
+            "public_raw_flows": public_total,
+            "fallback_or_lab_flows": fallback_total,
+            "by_class": by_class,
+        }
+
+    if not force_rebuild and save_path.exists():
+        cached = pd.read_csv(save_path)
+        counts = cached[TARGET_CLASS_COL].value_counts().to_dict()
+        by_class = {
+            label: {"public_raw": 0, "fallback_or_lab": int(counts.get(label, 0))}
+            for label in LABEL_CLASSES
+        }
+        return cached, {
+            "mode": "statistical_fallback",
+            "raw_files_detected": raw_filenames,
+            "public_raw_flows": 0,
+            "fallback_or_lab_flows": int(len(cached)),
+            "by_class": by_class,
+        }
+
+    synthetic = generate_synthetic_dataset(n_samples=n_samples, seed=seed)
+    synthetic.to_csv(save_path, index=False)
+    counts = synthetic[TARGET_CLASS_COL].value_counts().to_dict()
+    by_class = {
+        label: {"public_raw": 0, "fallback_or_lab": int(counts.get(label, 0))}
+        for label in LABEL_CLASSES
+    }
+    return synthetic, {
+        "mode": "statistical_fallback",
+        "raw_files_detected": raw_filenames,
+        "public_raw_flows": 0,
+        "fallback_or_lab_flows": int(len(synthetic)),
+        "by_class": by_class,
+    }
+
+
 def build_or_load_dataset(
     force_rebuild: bool = False,
     n_samples: int = 6000,
@@ -486,16 +584,10 @@ def build_or_load_dataset(
     save_path: Path = PROCESSED_DATASET_PATH,
 ) -> pd.DataFrame:
     """Load external CSVs from data/raw/ if available, else generate synthetic dataset."""
-    ensure_directories()
-
-    external = load_external_csvs(RAW_DATA_DIR)
-    if external is not None:
-        external.to_csv(save_path, index=False)
-        return external
-
-    if not force_rebuild and save_path.exists():
-        return pd.read_csv(save_path)
-
-    synthetic = generate_synthetic_dataset(n_samples=n_samples, seed=seed)
-    synthetic.to_csv(save_path, index=False)
-    return synthetic
+    df, _ = build_or_load_dataset_with_metadata(
+        force_rebuild=force_rebuild,
+        n_samples=n_samples,
+        seed=seed,
+        save_path=save_path,
+    )
+    return df
