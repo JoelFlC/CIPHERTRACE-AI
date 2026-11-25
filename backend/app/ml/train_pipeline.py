@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 import warnings
+from pathlib import Path
 from typing import Any
 
 import joblib
@@ -25,6 +26,7 @@ from app.core.config import (
     MLP_MODEL_PATH,
     MODEL_METRICS_PATH,
     PROCESSED_DATASET_PATH,
+    PROJECT_ROOT,
     RANDOM_SEED,
     RF_MODEL_PATH,
     SCALER_PATH,
@@ -54,6 +56,14 @@ def _compute_binary_metrics(
     if extra:
         metrics.update(extra)
     return metrics
+
+
+def _relative_dataset_path(dataset_path: Path) -> str:
+    """Return a repository-relative path so metrics stay portable across machines."""
+    try:
+        return str(dataset_path.resolve().relative_to(PROJECT_ROOT.resolve()))
+    except ValueError:
+        return dataset_path.name
 
 
 def run_training_pipeline() -> dict[str, Any]:
@@ -218,7 +228,7 @@ def run_training_pipeline() -> dict[str, Any]:
 
     model_metrics = {
         "dataset": {
-            "path": str(PROCESSED_DATASET_PATH),
+            "path": _relative_dataset_path(PROCESSED_DATASET_PATH),
             "total_flows": int(n_total),
             "total_features": len(FEATURE_COLUMNS),
             "selected_features_count": int(ga_mask.sum()),

@@ -1,6 +1,6 @@
 {
   "dataset": {
-    "path": "/home/joel/Documentos/IA/Proyecto/ciphertrace-ai/backend/data/processed/ciphertrace_dataset.csv",
+    "path": "backend/data/processed/ciphertrace_dataset.csv",
     "total_flows": 20000,
     "total_features": 18,
     "selected_features_count": 8,
