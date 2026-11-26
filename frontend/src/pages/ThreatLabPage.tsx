@@ -1,18 +1,23 @@
-import { useState } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import {
+  Activity,
   CheckCircle2,
   ExternalLink,
   GlobeLock,
-  Loader2,
   Play,
   Radio,
-  ServerCrash,
   ShieldAlert,
   ShieldCheck,
   UploadCloud,
   Wifi,
 } from 'lucide-react';
-import { RiskBadge } from '../components/RiskBadge';
+import { RiskBadge } from '../components/soc/RiskBadge';
+import { ThreatBadge } from '../components/soc/ThreatBadge';
+import { AlertBanner } from '../components/ui/AlertBanner';
+import { BentoCard } from '../components/ui/BentoCard';
+import { Button } from '../components/ui/Button';
+import { EmptyState } from '../components/ui/EmptyState';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { BACKEND_ORIGIN, simulateThreat } from '../services/api';
 import {
   THREAT_COLORS,
@@ -23,26 +28,25 @@ import {
 
 interface ThreatLabPageProps {
   liveFeed: LiveFeedItem[];
+  selectedFlowId?: string | null;
   onSelectFlow: (flow: AnalyzedFlow) => void;
   onSimulationComplete?: () => void;
 }
 
-interface ScenarioCardConfig {
+interface ScenarioConfig {
   scenario: ThreatVector;
   title: string;
   subtitle: string;
   telemetryHint: string;
-  accentColor: string;
   icon: typeof ShieldCheck;
 }
 
-const SCENARIO_CARDS: ScenarioCardConfig[] = [
+const SCENARIOS: ScenarioConfig[] = [
   {
     scenario: 'BENIGN',
     title: 'Tráfico HTTPS Benigno',
     subtitle: 'Navegación TLS 1.3 directa hacia servicios legítimos.',
     telemetryHint: 'Baja entropía SNI · 0 redirecciones',
-    accentColor: '#10B981',
     icon: ShieldCheck,
   },
   {
@@ -50,15 +54,13 @@ const SCENARIO_CARDS: ScenarioCardConfig[] = [
     title: 'Beaconing C2',
     subtitle: 'Callbacks periódicos automatizados hacia Command & Control.',
     telemetryHint: 'IAT std muy bajo · paquetes pequeños',
-    accentColor: '#EF4444',
     icon: Radio,
   },
   {
     scenario: 'DOH_TUNNEL',
     title: 'Túnel DNS-over-HTTPS',
-    subtitle: 'Exfiltración y canal encubierto sobre consultas DoH cifradas.',
+    subtitle: 'Canal encubierto sobre consultas DoH cifradas.',
     telemetryHint: 'Alta entropía SNI · tasa DNS elevada',
-    accentColor: '#06B6D4',
     icon: Wifi,
   },
   {
@@ -66,17 +68,22 @@ const SCENARIO_CARDS: ScenarioCardConfig[] = [
     title: 'Exfiltración de Datos',
     subtitle: 'Transferencia masiva saliente en ráfagas cercanas al MTU.',
     telemetryHint: 'Asimetría saliente positiva marcada',
-    accentColor: '#F59E0B',
     icon: UploadCloud,
   },
   {
     scenario: 'PHISHING_AITM',
     title: 'Phishing Proxy Inverso AiTM',
-    subtitle: 'Interceptación de credenciales y cookies MFA mediante doble salto.',
+    subtitle: 'Interceptación de credenciales y cookies MFA en doble salto.',
     telemetryHint: 'Doble salto >200 ms · múltiples redirects',
-    accentColor: '#F43F5E',
     icon: ShieldAlert,
   },
+];
+
+const BATCH_OPTIONS = [
+  { value: 1, label: '1' },
+  { value: 3, label: '3' },
+  { value: 5, label: '5' },
+  { value: 10, label: '10' },
 ];
 
 function formatClock(iso: string): string {
@@ -92,6 +99,7 @@ function formatClock(iso: string): string {
 
 export function ThreatLabPage({
   liveFeed,
+  selectedFlowId = null,
   onSelectFlow,
   onSimulationComplete,
 }: ThreatLabPageProps) {
@@ -132,111 +140,101 @@ export function ThreatLabPage({
     }
   };
 
+  const handleRowKeyDown = (
+    event: KeyboardEvent<HTMLTableRowElement>,
+    flow: AnalyzedFlow,
+  ) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onSelectFlow(flow);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {/* Section 1: Controlled Threat Injection */}
-      <section className="rounded-lg border border-[#1F2937] bg-[#111827] p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1F2937] pb-4">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-100">
-              Panel de Inyección Controlada de Tráfico
-            </h2>
-            <p className="mt-0.5 text-xs text-gray-400">
-              Genera flujos sintéticos evaluados en vivo por el motor híbrido
-              sin descifrar payload (<span className="mono-num">POST /api/lab/simulate</span>)
-            </p>
+      {/* Row 1: Controlled Traffic Injection */}
+      <BentoCard
+        title="Panel de inyección controlada de tráfico"
+        subtitle={
+          <span>
+            Genera flujos sintéticos evaluados en vivo sin descifrar payload (
+            <span className="tech-mono text-[#F2F4F5]">POST /api/lab/simulate</span>)
+          </span>
+        }
+        action={
+          <div className="flex items-center gap-2.5 text-xs">
+            <span className="text-[#A1ABB3]">Flujos por lote</span>
+            <SegmentedControl
+              options={BATCH_OPTIONS}
+              value={flowCount}
+              onChange={setFlowCount}
+              ariaLabel="Cantidad de flujos por lote"
+              tabular
+            />
           </div>
-
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-gray-400">Flujos por lote:</span>
-            <div className="inline-flex rounded-md border border-[#1F2937] bg-[#0B0F19] p-0.5">
-              {[1, 3, 5, 10].map((qty) => (
-                <button
-                  key={qty}
-                  type="button"
-                  onClick={() => setFlowCount(qty)}
-                  className={`mono-num rounded px-2.5 py-1 text-xs transition-colors ${
-                    flowCount === qty
-                      ? 'bg-[#1F2937] text-cyan-300'
-                      : 'text-gray-400 hover:text-gray-200'
-                  }`}
-                >
-                  {qty}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
+        }
+        headerDivider
+      >
         {simError && (
-          <div className="mt-4 flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-xs text-red-300">
-            <ServerCrash className="h-4 w-4 shrink-0" />
-            <span>{simError}</span>
-          </div>
+          <AlertBanner variant="error" className="mb-4">
+            {simError}
+          </AlertBanner>
         )}
 
-        <div className="mt-4 grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-5">
-          {SCENARIO_CARDS.map((card) => {
-            const Icon = card.icon;
-            const isRunning = runningScenario === card.scenario;
-            const lastRun = scenarioResults[card.scenario];
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {SCENARIOS.map((item) => {
+            const Icon = item.icon;
+            const isRunning = runningScenario === item.scenario;
+            const lastRun = scenarioResults[item.scenario];
+            const dotColor = THREAT_COLORS[item.scenario] ?? '#5795F2';
 
             return (
               <div
-                key={card.scenario}
-                className="flex flex-col justify-between rounded-md border border-[#1F2937] bg-[#0B0F19] p-4"
+                key={item.scenario}
+                className="flex flex-col justify-between rounded-xl bg-[#272F35]/65 p-4"
               >
                 <div>
                   <div className="flex items-center justify-between gap-2">
-                    <span
-                      className="flex h-8 w-8 items-center justify-center rounded border"
-                      style={{
-                        color: card.accentColor,
-                        borderColor: `${card.accentColor}40`,
-                        backgroundColor: `${card.accentColor}14`,
-                      }}
-                    >
-                      <Icon className="h-4 w-4" />
+                    <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[#1C2226] text-[#F2F4F5]">
+                      <Icon
+                        className="h-4 w-4"
+                        style={{ color: dotColor }}
+                        strokeWidth={1.75}
+                        aria-hidden="true"
+                      />
                     </span>
-                    <span className="mono-num text-[10px] text-gray-500">
-                      {card.scenario}
+                    <span className="tech-mono text-[11px] text-[#8E99A2]">
+                      {item.scenario}
                     </span>
                   </div>
 
-                  <h3 className="mt-3 text-sm font-semibold text-gray-100">
-                    {card.title}
+                  <h3 className="mt-3 text-sm font-semibold text-[#F2F4F5]">
+                    {item.title}
                   </h3>
-                  <p className="mt-1 text-xs leading-relaxed text-gray-400">
-                    {card.subtitle}
+                  <p className="mt-1 text-xs leading-relaxed text-[#A1ABB3]">
+                    {item.subtitle}
                   </p>
-                  <div className="mono-num mt-2.5 rounded border border-[#1F2937] bg-[#111827] px-2 py-1 text-[10px] text-gray-400">
-                    {card.telemetryHint}
-                  </div>
+                  <p className="mt-2.5 text-[11px] text-[#8E99A2]">
+                    {item.telemetryHint}
+                  </p>
                 </div>
 
                 <div className="mt-4 space-y-2">
-                  <button
-                    type="button"
-                    disabled={runningScenario !== null}
-                    onClick={() => void handleRunSimulation(card.scenario)}
-                    className="flex w-full items-center justify-center gap-2 rounded-md border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={isRunning}
+                    disabled={runningScenario !== null && !isRunning}
+                    onClick={() => void handleRunSimulation(item.scenario)}
+                    icon={<Play className="h-3.5 w-3.5 text-[#79ABFF]" strokeWidth={1.75} />}
+                    className="w-full"
                   >
-                    {isRunning ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        <span>Inyectando...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Play className="h-3.5 w-3.5" />
-                        <span>Ejecutar Simulación</span>
-                      </>
-                    )}
-                  </button>
+                    {isRunning ? 'Inyectando...' : 'Ejecutar simulación'}
+                  </Button>
 
                   {lastRun && (
-                    <div className="mono-num flex items-center justify-center gap-1.5 text-[11px] text-emerald-400">
-                      <CheckCircle2 className="h-3 w-3" />
+                    <div className="tabular-nums flex items-center justify-center gap-1.5 text-[11px] font-medium text-[#36C995]">
+                      <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
                       <span>
                         {lastRun.count} flujos · {lastRun.alerts} alertas
                       </span>
@@ -247,243 +245,244 @@ export function ThreatLabPage({
             );
           })}
         </div>
-      </section>
+      </BentoCard>
 
-      {/* Section 2: Local AiTM Web Lab & 3-Step Guide */}
+      {/* Row 2: Asymmetric Bento — Portal Comparison (7) + 3-Step Guide (5) */}
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        {/* Portal Comparison Cards */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:col-span-7">
-          <div className="flex flex-col justify-between rounded-lg border border-emerald-500/30 bg-[#111827] p-5">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="inline-flex items-center gap-1.5 rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
-                  <GlobeLock className="h-3 w-3" />
-                  Línea Base Segura
-                </span>
-                <span className="mono-num text-[11px] text-gray-500">
-                  /lab/legit-portal
-                </span>
+        <BentoCard
+          noPadding
+          title="Portales locales comparativos (AiTM Lab)"
+          subtitle="Comparativa controlada entre acceso TLS directo y proxy inverso de doble salto"
+          className="xl:col-span-7"
+        >
+          <div className="grid grid-cols-1 divide-y divide-[#343D43]/60 md:grid-cols-2 md:divide-x md:divide-y-0">
+            {/* Legit Portal */}
+            <div className="flex flex-col justify-between p-5">
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-md border border-[#36C995]/30 bg-[#36C995]/14 px-2 py-0.5 text-[11px] font-medium text-[#36C995]">
+                    <GlobeLock className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
+                    Línea base segura
+                  </span>
+                  <span className="tech-mono text-[11px] text-[#8E99A2]">
+                    /lab/legit-portal
+                  </span>
+                </div>
+
+                <h3 className="mt-3 text-base font-semibold text-[#F2F4F5]">
+                  Portal Legítimo Ficticio
+                </h3>
+                <p className="mt-1.5 max-w-[65ch] text-xs leading-relaxed text-[#A1ABB3]">
+                  Simula un inicio de sesión TLS 1.3 directo al servidor
+                  institucional sin intermediarios. Registra latencia nominal
+                  (~25 ms) y cero redirecciones.
+                </p>
               </div>
-              <h3 className="mt-3 text-base font-semibold text-gray-100">
-                Portal Legítimo Ficticio
-              </h3>
-              <p className="mt-1.5 text-xs leading-relaxed text-gray-400">
-                Simula un inicio de sesión TLS 1.3 directo al servidor
-                institucional sin intermediarios. Registra latencia nominal (~25
-                ms) y cero redirecciones.
-              </p>
+
+              <a
+                href={`${BACKEND_ORIGIN}/lab/legit-portal`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="pressable mt-5 inline-flex h-9 items-center justify-center gap-2 rounded-[10px] border border-[#343D43] bg-[#272F35] px-4 text-xs font-medium text-[#F2F4F5] hover:bg-[#2E383F] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5795F2]/75"
+              >
+                <span>Abrir Portal Legítimo</span>
+                <ExternalLink className="h-3.5 w-3.5 text-[#36C995]" strokeWidth={1.75} aria-hidden="true" />
+              </a>
             </div>
 
-            <a
-              href={`${BACKEND_ORIGIN}/lab/legit-portal`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-5 inline-flex items-center justify-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20"
-            >
-              <span>Abrir Portal Legítimo</span>
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          </div>
+            {/* AiTM Proxy */}
+            <div className="flex flex-col justify-between p-5">
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-md border border-[#E56B6F]/30 bg-[#E56B6F]/14 px-2 py-0.5 text-[11px] font-medium text-[#F08A8D]">
+                    <ShieldAlert className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
+                    Proxy Adversary-in-the-Middle
+                  </span>
+                  <span className="tech-mono text-[11px] text-[#8E99A2]">
+                    /lab/aitm-proxy
+                  </span>
+                </div>
 
-          <div className="flex flex-col justify-between rounded-lg border border-red-500/30 bg-[#111827] p-5">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="inline-flex items-center gap-1.5 rounded border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-400">
-                  <ShieldAlert className="h-3 w-3" />
-                  Proxy Adversary-in-the-Middle
-                </span>
-                <span className="mono-num text-[11px] text-gray-500">
-                  /lab/aitm-proxy
-                </span>
+                <h3 className="mt-3 text-base font-semibold text-[#F2F4F5]">
+                  Proxy Inverso AiTM (Demo)
+                </h3>
+                <p className="mt-1.5 max-w-[65ch] text-xs leading-relaxed text-[#A1ABB3]">
+                  Simula un proxy inverso clonado que retransmite autenticación
+                  MFA en doble salto (~280 ms, 5 redirecciones y SNI anómalo)
+                  para capturar un token ficticio.
+                </p>
               </div>
-              <h3 className="mt-3 text-base font-semibold text-gray-100">
-                Proxy Inverso AiTM (Demo)
-              </h3>
-              <p className="mt-1.5 text-xs leading-relaxed text-gray-400">
-                Simula un proxy inverso clonado que retransmite autenticación MFA
-                en doble salto (~280 ms, 5 redirecciones y SNI anómalo) para
-                capturar un token ficticio.
-              </p>
+
+              <a
+                href={`${BACKEND_ORIGIN}/lab/aitm-proxy`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="pressable mt-5 inline-flex h-9 items-center justify-center gap-2 rounded-[10px] border border-[#E56B6F]/30 bg-[#E56B6F]/14 px-4 text-xs font-semibold text-[#F08A8D] hover:bg-[#E56B6F]/22 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5795F2]/75"
+              >
+                <span>Abrir Proxy AiTM (Demo)</span>
+                <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+              </a>
             </div>
-
-            <a
-              href={`${BACKEND_ORIGIN}/lab/aitm-proxy`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-5 inline-flex items-center justify-center gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/20"
-            >
-              <span>Abrir Proxy AiTM (Demo)</span>
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
           </div>
-        </div>
+        </BentoCard>
 
-        {/* 3-Step Visual Guide */}
-        <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-5 xl:col-span-5">
-          <h3 className="text-sm font-semibold text-gray-100">
-            Guía de Demostración AiTM en 3 Pasos
-          </h3>
-          <p className="mt-0.5 text-xs text-gray-400">
-            Flujo seguro sin almacenamiento de contraseñas reales
-          </p>
-
-          <ol className="mt-4 space-y-3">
-            <li className="flex gap-3 rounded-md border border-[#1F2937] bg-[#0B0F19] p-3">
-              <span className="mono-num flex h-6 w-6 shrink-0 items-center justify-center rounded border border-cyan-500/30 bg-cyan-500/10 text-xs font-semibold text-cyan-300">
+        <BentoCard
+          title="Guía de demostración AiTM"
+          subtitle="Secuencia segura sin almacenamiento de credenciales reales"
+          className="xl:col-span-5"
+          headerDivider
+        >
+          <ol className="divide-y divide-[#343D43]/55">
+            <li className="flex gap-3 py-3 first:pt-0 last:pb-0">
+              <span className="tabular-nums flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#5795F2]/14 text-xs font-semibold text-[#79ABFF]">
                 1
               </span>
               <div className="text-xs">
-                <div className="font-medium text-gray-100">
+                <div className="font-medium text-[#F2F4F5]">
                   Abre el Proxy Inverso AiTM en una nueva pestaña
                 </div>
-                <div className="mt-0.5 text-gray-400">
-                  Pulsa <span className="text-red-300">Abrir Proxy AiTM</span>{' '}
-                  y mantén esta consola SOC visible para observar el WebSocket.
-                </div>
+                <p className="mt-0.5 leading-relaxed text-[#A1ABB3]">
+                  Pulsa <span className="font-medium text-[#F08A8D]">Abrir Proxy AiTM</span>{' '}
+                  y mantén esta consola visible para observar el WebSocket.
+                </p>
               </div>
             </li>
 
-            <li className="flex gap-3 rounded-md border border-[#1F2937] bg-[#0B0F19] p-3">
-              <span className="mono-num flex h-6 w-6 shrink-0 items-center justify-center rounded border border-cyan-500/30 bg-cyan-500/10 text-xs font-semibold text-cyan-300">
+            <li className="flex gap-3 py-3 first:pt-0 last:pb-0">
+              <span className="tabular-nums flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#5795F2]/14 text-xs font-semibold text-[#79ABFF]">
                 2
               </span>
               <div className="text-xs">
-                <div className="font-medium text-gray-100">
+                <div className="font-medium text-[#F2F4F5]">
                   Inicia sesión con credenciales y MFA ficticios
                 </div>
-                <div className="mt-0.5 text-gray-400">
+                <p className="mt-0.5 leading-relaxed text-[#A1ABB3]">
                   Envía el formulario precargado. El proxy mide únicamente el
                   retardo de doble salto, redirecciones y SNI.
-                </div>
+                </p>
               </div>
             </li>
 
-            <li className="flex gap-3 rounded-md border border-[#1F2937] bg-[#0B0F19] p-3">
-              <span className="mono-num flex h-6 w-6 shrink-0 items-center justify-center rounded border border-cyan-500/30 bg-cyan-500/10 text-xs font-semibold text-cyan-300">
+            <li className="flex gap-3 py-3 first:pt-0 last:pb-0">
+              <span className="tabular-nums flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#5795F2]/14 text-xs font-semibold text-[#79ABFF]">
                 3
               </span>
               <div className="text-xs">
-                <div className="font-medium text-gray-100">
+                <div className="font-medium text-[#F2F4F5]">
                   Inspecciona la alerta en vivo en el feed inferior
                 </div>
-                <div className="mt-0.5 text-gray-400">
+                <p className="mt-0.5 leading-relaxed text-[#A1ABB3]">
                   La detección{' '}
-                  <span className="mono-num text-red-400">PHISHING_AITM</span>{' '}
-                  aparece al instante; haz clic en la fila para ver su XAI.
-                </div>
+                  <span className="tech-mono text-[#B0A1F8]">PHISHING_AITM</span>{' '}
+                  aparece al instante; selecciona la fila para abrir su XAI.
+                </p>
               </div>
             </li>
           </ol>
-        </div>
+        </BentoCard>
       </section>
 
-      {/* Section 3: Live Lab Feed */}
-      <section className="rounded-lg border border-[#1F2937] bg-[#111827]">
-        <div className="flex items-center justify-between border-b border-[#1F2937] px-4 py-3">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-100">
-              Feed en Tiempo Real del Laboratorio y WebSocket
-            </h2>
-            <p className="text-xs text-gray-400">
-              Eventos recibidos desde <span className="mono-num">/ws/alerts</span>{' '}
-              y simulaciones recientes
-            </p>
-          </div>
-          <span className="mono-num rounded border border-[#1F2937] bg-[#0B0F19] px-2.5 py-1 text-xs text-gray-300">
+      {/* Row 3: Live Lab & WebSocket Feed */}
+      <BentoCard
+        noPadding
+        title="Feed en tiempo real del laboratorio y WebSocket"
+        subtitle={
+          <span>
+            Eventos recibidos desde{' '}
+            <span className="tech-mono text-[#F2F4F5]">/ws/alerts</span> y
+            simulaciones recientes
+          </span>
+        }
+        action={
+          <span className="tabular-nums rounded-md border border-[#343D43] bg-[#272F35] px-2.5 py-1 text-xs font-medium text-[#F2F4F5]">
             {liveFeed.length} eventos
           </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] border-collapse text-left text-xs">
-            <thead>
-              <tr className="border-b border-[#1F2937] bg-[#0D1321] text-[11px] font-medium uppercase tracking-wider text-gray-400">
-                <th className="px-4 py-2.5">Hora</th>
-                <th className="px-4 py-2.5">Origen Evento</th>
-                <th className="px-4 py-2.5">Flujo</th>
-                <th className="px-4 py-2.5">Vector</th>
-                <th className="px-4 py-2.5 text-right">Doble Salto</th>
-                <th className="px-4 py-2.5 text-right">Riesgo</th>
-                <th className="px-4 py-2.5">Nivel</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#1F2937]">
-              {liveFeed.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-4 py-10 text-center text-xs text-gray-500"
-                  >
-                    Esperando eventos del laboratorio. Ejecuta una simulación o
-                    prueba el Proxy AiTM local.
-                  </td>
+        }
+      >
+        {liveFeed.length === 0 ? (
+          <EmptyState
+            icon={Activity}
+            title="Esperando eventos del laboratorio"
+            description="Ejecuta una simulación arriba o prueba el Proxy AiTM local para ver los flujos evaluados aquí."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[860px] border-collapse text-left text-[13px]">
+              <thead>
+                <tr className="border-b border-[#343D43]/60 bg-[#151A1E]/60 text-xs font-medium text-[#A1ABB3]">
+                  <th className="px-5 py-3">Hora</th>
+                  <th className="px-4 py-3">Origen evento</th>
+                  <th className="px-4 py-3">Flujo</th>
+                  <th className="px-4 py-3">Vector</th>
+                  <th className="px-4 py-3 text-right">Doble salto</th>
+                  <th className="px-4 py-3 text-right">Riesgo</th>
+                  <th className="px-5 py-3">Nivel</th>
                 </tr>
-              ) : (
-                liveFeed.map((item) => {
+              </thead>
+              <tbody className="divide-y divide-[#343D43]/50">
+                {liveFeed.map((item) => {
                   const { flow, source, capturedDemoToken } = item;
                   const doubleHop = flow.features?.double_hop_latency_ms ?? 0;
-                  const vecColor =
-                    THREAT_COLORS[flow.predicted_threat] ?? '#9CA3AF';
+                  const isSelected = selectedFlowId === flow.flow_id;
 
                   return (
                     <tr
                       key={`${flow.id}-${flow.flow_id}`}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Inspeccionar evento ${flow.flow_id}, vector ${flow.predicted_threat}`}
                       onClick={() => onSelectFlow(flow)}
-                      className="cursor-pointer transition-colors hover:bg-[#1F2937]/45"
+                      onKeyDown={(e) => handleRowKeyDown(e, flow)}
+                      className={`cursor-pointer transition-colors duration-150 focus-visible:bg-[#272F35] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5795F2]/75 ${
+                        isSelected
+                          ? 'bg-[#5795F2]/12'
+                          : 'hover:bg-[#272F35]/55'
+                      }`}
                     >
-                      <td className="mono-num whitespace-nowrap px-4 py-2.5 text-gray-400">
+                      <td className="tabular-nums whitespace-nowrap px-5 py-3 text-xs text-[#A1ABB3]">
                         {formatClock(flow.timestamp_utc)}
                       </td>
-                      <td className="px-4 py-2.5">
-                        <span className="mono-num rounded border border-[#1F2937] bg-[#0B0F19] px-2 py-0.5 text-[11px] text-gray-300">
+                      <td className="px-4 py-3">
+                        <span className="tech-mono rounded-md border border-[#343D43] bg-[#272F35] px-2 py-0.5 text-[11px] text-[#F2F4F5]">
                           {source}
                         </span>
                         {capturedDemoToken && (
-                          <div className="mono-num mt-1 text-[10px] text-red-400">
+                          <div className="tech-mono mt-1 text-[11px] text-[#F08A8D]">
                             Token demo capturado: {capturedDemoToken}
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-2.5">
-                        <div className="mono-num text-gray-200">
+                      <td className="px-4 py-3">
+                        <div className="tech-mono text-xs text-[#F2F4F5]">
                           {flow.src_ip}:{flow.src_port} → {flow.dst_ip}:
                           {flow.dst_port}
                         </div>
                         {flow.sni && (
-                          <div className="mono-num max-w-xs truncate text-[11px] text-gray-500">
+                          <div className="tech-mono mt-0.5 max-w-xs truncate text-[11px] text-[#8E99A2]">
                             {flow.sni}
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-2.5">
-                        <span
-                          className="mono-num rounded border px-2 py-0.5 text-[11px]"
-                          style={{
-                            color: vecColor,
-                            borderColor: `${vecColor}40`,
-                            backgroundColor: `${vecColor}14`,
-                          }}
-                        >
-                          {flow.predicted_threat}
-                        </span>
+                      <td className="px-4 py-3">
+                        <ThreatBadge vector={flow.predicted_threat} />
                       </td>
-                      <td className="mono-num px-4 py-2.5 text-right text-gray-300">
+                      <td className="tabular-nums px-4 py-3 text-right text-[#A1ABB3]">
                         {doubleHop.toFixed(1)} ms
                       </td>
-                      <td className="mono-num px-4 py-2.5 text-right font-semibold text-gray-100">
+                      <td className="tabular-nums px-4 py-3 text-right font-semibold text-[#F2F4F5]">
                         {flow.risk_score.toFixed(3)}
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-5 py-3">
                         <RiskBadge level={flow.risk_level} />
                       </td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </BentoCard>
     </div>
   );
 }

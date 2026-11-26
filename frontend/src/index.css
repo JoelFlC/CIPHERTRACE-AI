@@ -5,32 +5,101 @@
 @layer base {
   :root {
     color-scheme: dark;
+    --bg-canvas: #101416;
+    --surface-sidebar: #151A1E;
+    --surface-primary: #1C2226;
+    --surface-secondary: #272F35;
+    --border-subtle: #343D43;
+    --border-hairline: rgba(52, 61, 67, 0.65);
+    --text-primary: #F2F4F5;
+    --text-secondary: #A1ABB3;
+    --text-muted: #8E99A2;
+    --accent-blue: #5795F2;
+    --accent-blue-light: #79ABFF;
+    --warning-amber: #F2A544;
+    --critical-red: #E56B6F;
+    --critical-red-text: #F08A8D;
+    --success-green: #36C995;
+    --vector-aitm: #9D8CF5;
+    --vector-aitm-text: #B0A1F8;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   }
 
   html,
   body {
-    background-color: #0B0F19;
-    color: #F3F4F6;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: 'Inter', 'Manrope', system-ui, -apple-system, sans-serif;
+    caret-color: var(--accent-blue);
   }
 
   * {
     scrollbar-width: thin;
-    scrollbar-color: #1F2937 #0B0F19;
+    scrollbar-color: var(--border-subtle) var(--bg-canvas);
   }
 }
 
-.mono-num {
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.tech-mono {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
   font-variant-numeric: tabular-nums;
 }
 
+.pressable {
+  transition:
+    transform 140ms var(--ease-out),
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease;
+}
+
+.pressable:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.drawer-backdrop {
+  transition: opacity 220ms var(--ease-out);
+}
+
+.drawer-panel {
+  transition: transform 260ms var(--ease-drawer);
+}
+
+.drawer-panel[data-state='closing'] {
+  transition: transform 200ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hover-lift {
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease,
+      transform 160ms var(--ease-out);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .pressable:active:not(:disabled) {
+    transform: none;
+  }
+
+  .drawer-panel {
+    transition: opacity 150ms ease;
+  }
+
+  .drawer-backdrop {
+    transition: opacity 150ms ease;
+  }
+
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

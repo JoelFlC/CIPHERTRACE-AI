@@ -296,11 +296,11 @@ export const THREAT_LABELS: Record<string, string> = {
 };
 
 export const THREAT_COLORS: Record<string, string> = {
-  BENIGN: '#10B981',
-  C2_BEACONING: '#EF4444',
-  DOH_TUNNEL: '#06B6D4',
-  EXFILTRATION: '#F59E0B',
-  PHISHING_AITM: '#F43F5E',
+  BENIGN: '#36C995',
+  C2_BEACONING: '#E56B6F',
+  DOH_TUNNEL: '#5795F2',
+  EXFILTRATION: '#F2A544',
+  PHISHING_AITM: '#9D8CF5',
 };
 
 export const FEATURE_LABELS: Record<string, string> = {

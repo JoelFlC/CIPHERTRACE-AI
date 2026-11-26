@@ -1,13 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  CheckCircle2,
-  Cpu,
-  Database,
-  Dna,
-  GitCompare,
-  Loader2,
-  MinusCircle,
-} from 'lucide-react';
+import { CheckCircle2, FileSpreadsheet, MinusCircle } from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -20,9 +12,16 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { MetricStrip, type MetricItem } from '../components/soc/MetricStrip';
+import { AlertBanner } from '../components/ui/AlertBanner';
+import { BentoCard } from '../components/ui/BentoCard';
+import { ChartTooltip } from '../components/ui/ChartTooltip';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { SkeletonBlock, SkeletonMetricStrip } from '../components/ui/Skeleton';
 import { fetchMLMetrics } from '../services/api';
 import {
   FEATURE_LABELS,
+  THREAT_LABELS,
   type MLMetricsResponse,
 } from '../types/ciphertrace';
 
@@ -44,6 +43,16 @@ interface ConvergenceTooltipProps {
   payload?: Array<{ payload: ConvergencePoint }>;
 }
 
+interface BarTooltipProps {
+  active?: boolean;
+  label?: string;
+  payload?: Array<{
+    name?: string;
+    value?: number;
+    color?: string;
+  }>;
+}
+
 interface ModelComparisonRow {
   key: string;
   displayName: string;
@@ -55,24 +64,57 @@ interface ModelComparisonRow {
   isHybrid?: boolean;
 }
 
+const PHASE_OPTIONS: Array<{ value: GAPhaseTab; label: string }> = [
+  { value: 'phase1', label: 'Fase 1: Atributos' },
+  { value: 'phase2', label: 'Fase 2: Pesos (F1)' },
+];
+
 function ConvergenceTooltip({ active, payload }: ConvergenceTooltipProps) {
   if (!active || !payload || payload.length === 0) return null;
   const pt = payload[0].payload;
   return (
-    <div className="rounded-md border border-[#1F2937] bg-[#0B0F19] px-3 py-2 text-xs shadow-lg">
-      <div className="mono-num font-semibold text-gray-100">
+    <ChartTooltip>
+      <div className="tabular-nums font-semibold text-[#F2F4F5]">
         Generación {pt.generation}
       </div>
-      <div className="mono-num mt-1 text-cyan-300">
+      <div className="tabular-nums mt-1 text-[#79ABFF]">
         Mejor: {pt.best.toFixed(4)}
       </div>
-      <div className="mono-num text-amber-300">
+      <div className="tabular-nums text-[#A1ABB3]">
         Promedio: {pt.avg.toFixed(4)}
       </div>
-      <div className="mono-num mt-1 text-[11px] text-gray-400">
+      <div className="tech-mono mt-1 text-[11px] text-[#8E99A2]">
         {pt.extraLabel}
       </div>
-    </div>
+    </ChartTooltip>
+  );
+}
+
+function ModelBarTooltip({ active, label, payload }: BarTooltipProps) {
+  if (!active || !payload || payload.length === 0) return null;
+  return (
+    <ChartTooltip>
+      <div className="font-semibold text-[#F2F4F5]">{label}</div>
+      <div className="mt-1.5 space-y-1">
+        {payload.map((entry) => (
+          <div
+            key={entry.name}
+            className="tabular-nums flex items-center justify-between gap-4 text-xs"
+          >
+            <span className="flex items-center gap-1.5 text-[#A1ABB3]">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: entry.color }}
+              />
+              {entry.name}
+            </span>
+            <span className="font-medium text-[#F2F4F5]">
+              {Number(entry.value ?? 0).toFixed(2)}%
+            </span>
+          </div>
+        ))}
+      </div>
+    </ChartTooltip>
   );
 }
 
@@ -206,18 +248,21 @@ export function ModelAnalyticsPage({ refreshTrigger }: ModelAnalyticsPageProps) 
 
   if (loading && !data) {
     return (
-      <div className="flex h-64 items-center justify-center rounded-lg border border-[#1F2937] bg-[#111827] text-xs text-gray-400">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#06B6D4]" />
-        Cargando métricas de validación cruzada y evolución genética...
+      <div className="space-y-6">
+        <SkeletonMetricStrip />
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+          <SkeletonBlock className="h-80 rounded-2xl xl:col-span-6" />
+          <SkeletonBlock className="h-80 rounded-2xl xl:col-span-6" />
+        </div>
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-5 text-xs text-red-300">
+      <AlertBanner variant="error">
         {error ?? 'No hay datos de métricas disponibles.'}
-      </div>
+      </AlertBanner>
     );
   }
 
@@ -225,212 +270,102 @@ export function ModelAnalyticsPage({ refreshTrigger }: ModelAnalyticsPageProps) 
   const selectedSet = new Set(ga_config.selected_features);
   const cm = model_metrics.hybrid_ensemble.confusion_matrix;
   const sourceBreakdown = model_metrics.dataset.source_breakdown;
+  const reductionPct = (
+    (1 - ga_config.selected_features.length / ga_config.feature_columns.length) *
+    100
+  ).toFixed(1);
+
+  const metricItems: MetricItem[] = [
+    {
+      id: 'dataset',
+      label: 'Dataset y validación',
+      value: model_metrics.dataset.total_flows.toLocaleString('es-ES'),
+      unit: 'flujos',
+      detail: `Validación cruzada k=${model_metrics.dataset.cv_folds}`,
+    },
+    {
+      id: 'ga-reduction',
+      label: 'Reducción dimensional AG',
+      value: `${ga_config.selected_features.length} / ${ga_config.feature_columns.length}`,
+      unit: 'atributos',
+      tone: 'success',
+      detail: `${reductionPct}% menos dimensionalidad`,
+    },
+    {
+      id: 'hybrid-f1',
+      label: 'F1-Score Híbrido (AG)',
+      value: model_metrics.hybrid_ensemble.f1_score.toFixed(4),
+      tone: 'accent',
+      detail: `Precisión ${model_metrics.hybrid_ensemble.precision.toFixed(4)} · Recall ${model_metrics.hybrid_ensemble.recall.toFixed(4)}`,
+    },
+    {
+      id: 'hybrid-weights',
+      label: 'Función de riesgo híbrido',
+      value: `${ga_config.weights.w_mlp.toFixed(2)} / ${ga_config.weights.w_ae.toFixed(2)}`,
+      detail: (
+        <span className="tech-mono text-[11px] text-[#F2A544]">
+          R={ga_config.weights.w_mlp.toFixed(2)}·MLP +{' '}
+          {ga_config.weights.w_ae.toFixed(2)}·AE · thr=
+          {ga_config.threshold.toFixed(2)}
+        </span>
+      ),
+    },
+  ];
 
   return (
-    <div className="space-y-5">
-      {/* Summary Strip */}
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
-          <div className="text-xs text-gray-400">Dataset y Validación</div>
-          <div className="mono-num mt-1.5 text-xl font-semibold text-gray-100">
-            {model_metrics.dataset.total_flows.toLocaleString('es-ES')} flujos
-          </div>
-          <div className="mono-num mt-1 text-[11px] text-cyan-300">
-            Validación Cruzada k={model_metrics.dataset.cv_folds}
-          </div>
-        </div>
+    <div className="space-y-6">
+      {/* Row 1: Summary Strip */}
+      <MetricStrip items={metricItems} />
 
-        <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
-          <div className="text-xs text-gray-400">Reducción Dimensional AG</div>
-          <div className="mono-num mt-1.5 text-xl font-semibold text-emerald-400">
-            {ga_config.selected_features.length} /{' '}
-            {ga_config.feature_columns.length} atributos
-          </div>
-          <div className="mono-num mt-1 text-[11px] text-gray-400">
-            {(
-              (1 -
-                ga_config.selected_features.length /
-                  ga_config.feature_columns.length) *
-              100
-            ).toFixed(1)}
-            % menos dimensionalidad
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
-          <div className="text-xs text-gray-400">F1-Score Híbrido (AG)</div>
-          <div className="mono-num mt-1.5 text-xl font-semibold text-cyan-300">
-            {model_metrics.hybrid_ensemble.f1_score.toFixed(4)}
-          </div>
-          <div className="mono-num mt-1 text-[11px] text-gray-400">
-            Precisión {model_metrics.hybrid_ensemble.precision.toFixed(4)} ·
-            Recall {model_metrics.hybrid_ensemble.recall.toFixed(4)}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
-          <div className="text-xs text-gray-400">Pesos Óptimos y Umbral</div>
-          <div className="mono-num mt-1.5 text-xl font-semibold text-gray-100">
-            {ga_config.weights.w_mlp.toFixed(2)} /{' '}
-            {ga_config.weights.w_ae.toFixed(2)}
-          </div>
-          <div className="mono-num mt-1 text-[11px] text-amber-300">
-            w_mlp={ga_config.weights.w_mlp.toFixed(2)} · w_ae=
-            {ga_config.weights.w_ae.toFixed(2)} · thr=
-            {ga_config.threshold.toFixed(2)}
-          </div>
-        </div>
-      </section>
-
-      {/* Dataset Provenance & Auto-Ingestion Traceability */}
-      {sourceBreakdown && (
-        <section className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Database className="h-4 w-4 text-[#06B6D4]" />
-              <div>
-                <h2 className="text-sm font-semibold text-gray-100">
-                  Procedencia del Dataset de Entrenamiento (Trazabilidad)
-                </h2>
-                <p className="text-xs text-gray-400">
-                  Ingesta automática desde{' '}
-                  <span className="mono-num">backend/data/raw/</span> con
-                  respaldo estadístico controlado
-                </p>
-              </div>
-            </div>
-
-            <span
-              className={`mono-num rounded border px-2.5 py-1 text-xs font-medium ${
-                sourceBreakdown.mode === 'public_only'
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                  : sourceBreakdown.mode === 'public_plus_lab'
-                    ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300'
-                    : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-              }`}
-            >
-              {sourceBreakdown.mode === 'public_only'
-                ? '100% Datasets Públicos'
-                : sourceBreakdown.mode === 'public_plus_lab'
-                  ? 'Datasets Públicos + Laboratorio'
-                  : 'Respaldo Estadístico (data/raw/ vacía)'}
-            </span>
-          </div>
-
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            {Object.entries(sourceBreakdown.by_class).map(([cls, counts]) => (
-              <div
-                key={cls}
-                className="rounded border border-[#1F2937] bg-[#0B0F19] px-3 py-2 text-xs"
-              >
-                <div className="mono-num font-medium text-gray-200">{cls}</div>
-                <div className="mono-num mt-1 flex items-center justify-between text-[11px] text-gray-400">
-                  <span>Público: {counts.public_raw}</span>
-                  <span>Lab/Resp: {counts.fallback_or_lab}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {sourceBreakdown.by_file &&
-            Object.keys(sourceBreakdown.by_file).length > 0 && (
-              <div className="mt-3 grid grid-cols-1 gap-2 border-t border-[#1F2937] pt-3 md:grid-cols-3">
-                {Object.entries(sourceBreakdown.by_file).map(
-                  ([fname, fileStats]) => (
-                    <div
-                      key={fname}
-                      className="rounded border border-[#1F2937] bg-[#0B0F19] px-3 py-2 text-xs"
-                    >
-                      <div className="mono-num truncate font-medium text-cyan-300">
-                        {fname}
-                      </div>
-                      <div className="mono-num mt-1 text-[11px] text-gray-300">
-                        {fileStats.total_loaded.toLocaleString('es-ES')} filas
-                        muestreadas
-                      </div>
-                    </div>
-                  ),
-                )}
-              </div>
-            )}
-        </section>
-      )}
-
-      {/* Row 2: GA Convergence Chart + Feature Selection & Optimal Weights */}
+      {/* Row 2: GA Convergence (6) + Feature Selection & Confusion Matrix (6) */}
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        {/* Convergence LineChart */}
-        <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4 xl:col-span-6">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
-                <Dna className="h-4 w-4 text-[#06B6D4]" />
-                Convergencia del Algoritmo Genético
-              </h2>
-              <p className="text-xs text-gray-400">
-                Evolución generacional de Mejor Aptitud vs. Aptitud Promedio
-              </p>
-            </div>
-
-            <div className="inline-flex rounded-md border border-[#1F2937] bg-[#0B0F19] p-0.5 text-xs">
-              <button
-                type="button"
-                onClick={() => setActivePhase('phase1')}
-                className={`rounded px-2.5 py-1 transition-colors ${
-                  activePhase === 'phase1'
-                    ? 'bg-[#1F2937] text-cyan-300'
-                    : 'text-gray-400 hover:text-gray-200'
-                }`}
-              >
-                Fase 1: Atributos
-              </button>
-              <button
-                type="button"
-                onClick={() => setActivePhase('phase2')}
-                className={`rounded px-2.5 py-1 transition-colors ${
-                  activePhase === 'phase2'
-                    ? 'bg-[#1F2937] text-cyan-300'
-                    : 'text-gray-400 hover:text-gray-200'
-                }`}
-              >
-                Fase 2: Pesos (F1)
-              </button>
-            </div>
-          </div>
-
+        <BentoCard
+          className="xl:col-span-6"
+          title="Convergencia del Algoritmo Genético"
+          subtitle="Evolución generacional de mejor aptitud frente a aptitud promedio"
+          action={
+            <SegmentedControl
+              options={PHASE_OPTIONS}
+              value={activePhase}
+              onChange={setActivePhase}
+              ariaLabel="Fase del algoritmo genético"
+            />
+          }
+        >
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height={288}>
               <LineChart
                 data={convergenceData}
-                margin={{ top: 10, right: 16, left: 0, bottom: 4 }}
+                margin={{ top: 10, right: 16, left: 0, bottom: 8 }}
               >
                 <CartesianGrid
-                  stroke="#1F2937"
+                  stroke="rgba(52, 61, 67, 0.45)"
                   strokeDasharray="3 3"
                   vertical={false}
                 />
                 <XAxis
                   dataKey="generation"
-                  stroke="#6B7280"
-                  tick={{ fontSize: 11, fill: '#9CA3AF', fontFamily: 'JetBrains Mono' }}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 11, fill: '#8E99A2' }}
                   label={{
                     value: 'Generaciones',
                     position: 'insideBottomRight',
                     offset: -4,
-                    fill: '#6B7280',
+                    fill: '#8E99A2',
                     fontSize: 11,
                   }}
                 />
                 <YAxis
                   domain={yDomain}
-                  stroke="#6B7280"
+                  axisLine={false}
+                  tickLine={false}
                   tickFormatter={(val: number) => val.toFixed(4)}
                   width={56}
-                  tick={{ fontSize: 11, fill: '#9CA3AF', fontFamily: 'JetBrains Mono' }}
+                  tick={{ fontSize: 11, fill: '#8E99A2' }}
                 />
                 <Tooltip content={<ConvergenceTooltip />} />
-                <Legend
-                  wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }}
-                />
+                <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
                 <Line
                   type="monotone"
                   dataKey="best"
@@ -439,9 +374,9 @@ export function ModelAnalyticsPage({ refreshTrigger }: ModelAnalyticsPageProps) 
                       ? 'Mejor Aptitud (Fitness)'
                       : 'Mejor F1-Score'
                   }
-                  stroke="#06B6D4"
+                  stroke="#5795F2"
                   strokeWidth={2.2}
-                  dot={{ r: 3, fill: '#06B6D4' }}
+                  dot={{ r: 3, fill: '#5795F2' }}
                   activeDot={{ r: 5 }}
                 />
                 <Line
@@ -452,158 +387,151 @@ export function ModelAnalyticsPage({ refreshTrigger }: ModelAnalyticsPageProps) 
                       ? 'Aptitud Promedio'
                       : 'F1-Score Promedio'
                   }
-                  stroke="#F59E0B"
-                  strokeWidth={1.8}
+                  stroke="#79ABFF"
+                  strokeWidth={1.7}
                   strokeDasharray="4 4"
                   dot={false}
                 />
               </LineChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </BentoCard>
 
-        {/* 18-Feature GA Selection Map + Weights + Confusion Matrix */}
-        <div className="flex flex-col justify-between rounded-lg border border-[#1F2937] bg-[#111827] p-4 xl:col-span-6">
-          <div>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
-                  <Cpu className="h-4 w-4 text-[#10B981]" />
-                  Mapa de Selección de Atributos (18 Características)
-                </h2>
-                <p className="text-xs text-gray-400">
-                  Comparación de características seleccionadas por el AG vs.
-                  descartadas
-                </p>
-              </div>
-              <div className="flex items-center gap-2 text-[11px]">
-                <span className="inline-flex items-center gap-1 text-emerald-400">
-                  <CheckCircle2 className="h-3 w-3" /> Seleccionadas (
-                  {ga_config.selected_features.length})
-                </span>
-                <span className="inline-flex items-center gap-1 text-gray-500">
-                  <MinusCircle className="h-3 w-3" /> Descartadas (
-                  {ga_config.discarded_features.length})
-                </span>
-              </div>
+        <BentoCard
+          className="flex flex-col justify-between xl:col-span-6"
+          title="Mapa de selección de atributos (18 características)"
+          subtitle="Máscara genética aplicada antes del entrenamiento e inferencia"
+          action={
+            <div className="tabular-nums flex items-center gap-3 text-xs">
+              <span className="inline-flex items-center gap-1 text-[#36C995]">
+                <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                {ga_config.selected_features.length} sel.
+              </span>
+              <span className="inline-flex items-center gap-1 text-[#8E99A2]">
+                <MinusCircle className="h-3.5 w-3.5" strokeWidth={1.75} />
+                {ga_config.discarded_features.length} desc.
+              </span>
             </div>
-
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {ga_config.feature_columns.map((feat) => {
-                const isSelected = selectedSet.has(feat);
-                return (
-                  <div
-                    key={feat}
-                    title={FEATURE_LABELS[feat] ?? feat}
-                    className={`flex items-center justify-between gap-2 rounded border px-2.5 py-1.5 text-xs ${
-                      isSelected
-                        ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-200'
-                        : 'border-[#1F2937] bg-[#0B0F19] text-gray-500'
-                    }`}
-                  >
-                    <span className="mono-num truncate text-[11px]">
-                      {feat}
-                    </span>
-                    {isSelected ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
-                    ) : (
-                      <MinusCircle className="h-3.5 w-3.5 shrink-0 text-gray-600" />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+          }
+        >
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {ga_config.feature_columns.map((feat) => {
+              const isSelected = selectedSet.has(feat);
+              return (
+                <div
+                  key={feat}
+                  title={FEATURE_LABELS[feat] ?? feat}
+                  className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-xs ${
+                    isSelected
+                      ? 'border-[#5795F2]/30 bg-[#5795F2]/14 text-[#79ABFF]'
+                      : 'border-transparent bg-[#272F35]/45 text-[#8E99A2]'
+                  }`}
+                >
+                  <span className="tech-mono truncate text-[11px]">{feat}</span>
+                  {isSelected ? (
+                    <CheckCircle2
+                      className="h-3.5 w-3.5 shrink-0 text-[#36C995]"
+                      strokeWidth={1.75}
+                      aria-label="Seleccionado"
+                    />
+                  ) : (
+                    <MinusCircle
+                      className="h-3.5 w-3.5 shrink-0 text-[#8E99A2]"
+                      strokeWidth={1.75}
+                      aria-label="Descartado"
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
 
-          {/* Optimal Weights & Confusion Matrix */}
-          <div className="mt-4 grid grid-cols-1 gap-3 border-t border-[#1F2937] pt-3 sm:grid-cols-2">
-            <div className="rounded-md border border-[#1F2937] bg-[#0B0F19] p-3">
-              <div className="text-[11px] font-medium uppercase tracking-wider text-gray-400">
-                Función de Riesgo Híbrido
-              </div>
-              <div className="mono-num mt-1.5 text-xs text-cyan-300">
-                R = {ga_config.weights.w_mlp.toFixed(2)}·MLP +{' '}
-                {ga_config.weights.w_ae.toFixed(2)}·AE
-              </div>
-              <div className="mono-num mt-1 text-[11px] text-gray-400">
-                Umbral de alerta ALTO: thr = {ga_config.threshold.toFixed(2)}
-              </div>
+          {/* 2x2 Confusion Matrix */}
+          <div className="mt-5 border-t border-[#343D43]/60 pt-4">
+            <div className="mb-2.5 flex items-center justify-between text-xs">
+              <span className="font-semibold text-[#F2F4F5]">
+                Matriz de confusión del ensamble (k={model_metrics.dataset.cv_folds})
+              </span>
+              <span className="tabular-nums text-[#A1ABB3]">
+                Total:{' '}
+                {(cm.tn + cm.fp + cm.fn + cm.tp).toLocaleString('es-ES')} flujos
+              </span>
             </div>
 
-            <div className="rounded-md border border-[#1F2937] bg-[#0B0F19] p-3">
-              <div className="text-[11px] font-medium uppercase tracking-wider text-gray-400">
-                Matriz de Confusión (Ensamble)
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="flex items-center justify-between rounded-[10px] border border-[#36C995]/25 bg-[#36C995]/12 px-3 py-2">
+                <span className="text-[#A1ABB3]">Verdadero Negativo (TN)</span>
+                <span className="tabular-nums font-semibold text-[#36C995]">
+                  {cm.tn.toLocaleString('es-ES')}
+                </span>
               </div>
-              <div className="mono-num mt-1.5 grid grid-cols-2 gap-1.5 text-[11px]">
-                <div className="rounded bg-emerald-500/10 px-2 py-1 text-emerald-400">
-                  TN: {cm.tn}
-                </div>
-                <div className="rounded bg-amber-500/10 px-2 py-1 text-amber-400">
-                  FP: {cm.fp}
-                </div>
-                <div className="rounded bg-amber-500/10 px-2 py-1 text-amber-400">
-                  FN: {cm.fn}
-                </div>
-                <div className="rounded bg-emerald-500/10 px-2 py-1 text-emerald-400">
-                  TP: {cm.tp}
-                </div>
+              <div className="flex items-center justify-between rounded-[10px] border border-[#F2A544]/25 bg-[#F2A544]/12 px-3 py-2">
+                <span className="text-[#A1ABB3]">Falso Positivo (FP)</span>
+                <span className="tabular-nums font-semibold text-[#F2A544]">
+                  {cm.fp.toLocaleString('es-ES')}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-[10px] border border-[#F2A544]/25 bg-[#F2A544]/12 px-3 py-2">
+                <span className="text-[#A1ABB3]">Falso Negativo (FN)</span>
+                <span className="tabular-nums font-semibold text-[#F2A544]">
+                  {cm.fn.toLocaleString('es-ES')}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-[10px] border border-[#36C995]/25 bg-[#36C995]/12 px-3 py-2">
+                <span className="text-[#A1ABB3]">Verdadero Positivo (TP)</span>
+                <span className="tabular-nums font-semibold text-[#36C995]">
+                  {cm.tp.toLocaleString('es-ES')}
+                </span>
               </div>
             </div>
           </div>
-        </div>
+        </BentoCard>
       </section>
 
-      {/* Row 3: Model Comparison Table + Grouped BarChart */}
+      {/* Row 3: Model Comparison Table (7) + Full 0-100% BarChart (5) */}
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <div className="rounded-lg border border-[#1F2937] bg-[#111827] xl:col-span-7">
-          <div className="border-b border-[#1F2937] px-4 py-3">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
-              <GitCompare className="h-4 w-4 text-[#06B6D4]" />
-              Comparativa de Modelos (Validación Cruzada k=
-              {model_metrics.dataset.cv_folds})
-            </h2>
-            <p className="text-xs text-gray-400">
-              Evaluación sobre los {ga_config.selected_features.length} atributos
-              óptimos seleccionados por el AG
-            </p>
-          </div>
-
+        <BentoCard
+          noPadding
+          className="xl:col-span-7"
+          title={`Comparativa de modelos (Validación cruzada k=${model_metrics.dataset.cv_folds})`}
+          subtitle={`Evaluación sobre los ${ga_config.selected_features.length} atributos óptimos seleccionados por el AG`}
+        >
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[600px] border-collapse text-left text-xs">
+            <table className="w-full min-w-[600px] border-collapse text-left text-[13px]">
               <thead>
-                <tr className="border-b border-[#1F2937] bg-[#0D1321] text-[11px] font-medium uppercase tracking-wider text-gray-400">
-                  <th className="px-4 py-2.5">Modelo</th>
-                  <th className="px-4 py-2.5">Paradigma</th>
-                  <th className="px-4 py-2.5 text-right">Precisión</th>
-                  <th className="px-4 py-2.5 text-right">Recall</th>
-                  <th className="px-4 py-2.5 text-right">F1-Score</th>
-                  <th className="px-4 py-2.5 text-right">Latencia (ms)</th>
+                <tr className="border-b border-[#343D43]/60 bg-[#151A1E]/60 text-xs font-medium text-[#A1ABB3]">
+                  <th className="px-5 py-3">Modelo</th>
+                  <th className="px-4 py-3">Paradigma</th>
+                  <th className="px-4 py-3 text-right">Precisión</th>
+                  <th className="px-4 py-3 text-right">Recall</th>
+                  <th className="px-4 py-3 text-right">F1-Score</th>
+                  <th className="px-5 py-3 text-right">Latencia</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#1F2937]">
+              <tbody className="divide-y divide-[#343D43]/50">
                 {modelRows.map((row) => (
                   <tr
                     key={row.key}
                     className={
                       row.isHybrid
-                        ? 'bg-cyan-500/5 font-medium text-cyan-100'
-                        : 'text-gray-200'
+                        ? 'bg-[#5795F2]/10 font-medium text-[#F2F4F5]'
+                        : 'text-[#F2F4F5]'
                     }
                   >
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{row.displayName}</div>
+                    <td className="px-5 py-3 font-medium">{row.displayName}</td>
+                    <td className="px-4 py-3 text-xs text-[#A1ABB3]">
+                      {row.paradigm}
                     </td>
-                    <td className="px-4 py-3 text-gray-400">{row.paradigm}</td>
-                    <td className="mono-num px-4 py-3 text-right">
+                    <td className="tabular-nums px-4 py-3 text-right">
                       {(row.precision * 100).toFixed(2)}%
                     </td>
-                    <td className="mono-num px-4 py-3 text-right">
+                    <td className="tabular-nums px-4 py-3 text-right">
                       {(row.recall * 100).toFixed(2)}%
                     </td>
-                    <td className="mono-num px-4 py-3 text-right font-semibold text-cyan-300">
+                    <td className="tabular-nums px-4 py-3 text-right font-semibold text-[#79ABFF]">
                       {(row.f1_score * 100).toFixed(2)}%
                     </td>
-                    <td className="mono-num px-4 py-3 text-right text-gray-300">
+                    <td className="tabular-nums px-5 py-3 text-right text-[#A1ABB3]">
                       {row.avg_latency_ms.toFixed(4)} ms
                     </td>
                   </tr>
@@ -611,18 +539,13 @@ export function ModelAnalyticsPage({ refreshTrigger }: ModelAnalyticsPageProps) 
               </tbody>
             </table>
           </div>
-        </div>
+        </BentoCard>
 
-        <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4 xl:col-span-5">
-          <div className="mb-3">
-            <h2 className="text-sm font-semibold text-gray-100">
-              Rendimiento Comparativo (%)
-            </h2>
-            <p className="text-xs text-gray-400">
-              Precisión, Recall y F1-Score por arquitectura evaluada
-            </p>
-          </div>
-
+        <BentoCard
+          className="xl:col-span-5"
+          title="Rendimiento comparativo (%)"
+          subtitle="Escala íntegra 0–100% por arquitectura evaluada"
+        >
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height={256}>
               <BarChart
@@ -630,38 +553,173 @@ export function ModelAnalyticsPage({ refreshTrigger }: ModelAnalyticsPageProps) 
                 margin={{ top: 8, right: 12, left: -12, bottom: 0 }}
               >
                 <CartesianGrid
-                  stroke="#1F2937"
+                  stroke="rgba(52, 61, 67, 0.45)"
                   strokeDasharray="3 3"
                   vertical={false}
                 />
                 <XAxis
                   dataKey="name"
-                  stroke="#6B7280"
-                  tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 11, fill: '#8E99A2' }}
                 />
                 <YAxis
-                  domain={[80, 100]}
-                  stroke="#6B7280"
+                  domain={[0, 100]}
+                  ticks={[0, 25, 50, 75, 100]}
+                  axisLine={false}
+                  tickLine={false}
                   tickFormatter={(v: number) => `${v}%`}
-                  tick={{ fontSize: 11, fill: '#9CA3AF', fontFamily: 'JetBrains Mono' }}
+                  tick={{ fontSize: 11, fill: '#8E99A2' }}
                 />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#0B0F19',
-                    borderColor: '#1F2937',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                  }}
-                />
+                <Tooltip content={<ModelBarTooltip />} cursor={{ fill: 'rgba(52, 61, 67, 0.25)' }} />
                 <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '6px' }} />
-                <Bar dataKey="Precisión" fill="#06B6D4" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="Recall" fill="#10B981" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="F1-Score" fill="#F59E0B" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="Precisión" fill="#5795F2" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Recall" fill="#79ABFF" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="F1-Score" fill="#36C995" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </div>
+          <p className="mt-2 text-[11px] leading-relaxed text-[#8E99A2]">
+            Autoencoder e Isolation Forest se entrenan únicamente con tráfico
+            benigno para detección Zero-Day; el ensamble ponderado los combina
+            con la red MLP.
+          </p>
+        </BentoCard>
       </section>
+
+      {/* Row 4: Unified Dataset Provenance */}
+      {sourceBreakdown && (
+        <BentoCard
+          title="Procedencia y trazabilidad del dataset de entrenamiento"
+          subtitle={
+            <span>
+              Ingesta desde{' '}
+              <span className="tech-mono text-[#F2F4F5]">backend/data/raw/</span>{' '}
+              con respaldo estadístico y laboratorio controlado
+            </span>
+          }
+          action={
+            <span
+              className={`rounded-md border px-2.5 py-1 text-xs font-medium ${
+                sourceBreakdown.mode === 'public_only'
+                  ? 'border-[#36C995]/30 bg-[#36C995]/14 text-[#36C995]'
+                  : sourceBreakdown.mode === 'public_plus_lab'
+                    ? 'border-[#5795F2]/30 bg-[#5795F2]/14 text-[#79ABFF]'
+                    : 'border-[#F2A544]/30 bg-[#F2A544]/14 text-[#F2A544]'
+              }`}
+            >
+              {sourceBreakdown.mode === 'public_only'
+                ? '100% Datasets Públicos'
+                : sourceBreakdown.mode === 'public_plus_lab'
+                  ? 'Datasets Públicos + Laboratorio'
+                  : 'Respaldo Estadístico (data/raw/ vacía)'}
+            </span>
+          }
+          headerDivider
+        >
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            {/* By Class Proportional Bars */}
+            <div className="space-y-3 lg:col-span-7">
+              <div className="flex items-center justify-between text-xs text-[#A1ABB3]">
+                <span className="font-medium text-[#F2F4F5]">
+                  Composición por clase ({sourceBreakdown.public_raw_flows.toLocaleString('es-ES')} públicos · {sourceBreakdown.fallback_or_lab_flows.toLocaleString('es-ES')} lab/respaldo)
+                </span>
+                <div className="flex items-center gap-3 text-[11px]">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-[#5795F2]" />
+                    Público
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-[#F2A544]" />
+                    Lab / Resp.
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2.5">
+                {Object.entries(sourceBreakdown.by_class).map(([cls, counts]) => {
+                  const total = counts.public_raw + counts.fallback_or_lab;
+                  const pubPct = total > 0 ? (counts.public_raw / total) * 100 : 0;
+                  const labPct = total > 0 ? (counts.fallback_or_lab / total) * 100 : 0;
+
+                  return (
+                    <div key={cls} className="space-y-1">
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <div className="min-w-0">
+                          <span className="font-medium text-[#F2F4F5]">
+                            {THREAT_LABELS[cls] ?? cls}
+                          </span>
+                          <span className="tech-mono ml-2 text-[11px] text-[#8E99A2]">
+                            {cls}
+                          </span>
+                        </div>
+                        <div className="tabular-nums shrink-0 text-[11px] text-[#A1ABB3]">
+                          Público:{' '}
+                          <strong className="text-[#F2F4F5]">
+                            {counts.public_raw.toLocaleString('es-ES')}
+                          </strong>{' '}
+                          · Lab:{' '}
+                          <strong className="text-[#F2F4F5]">
+                            {counts.fallback_or_lab.toLocaleString('es-ES')}
+                          </strong>
+                        </div>
+                      </div>
+                      <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-[#272F35]">
+                        {pubPct > 0 && (
+                          <div
+                            className="h-full bg-[#5795F2]"
+                            style={{ width: `${pubPct}%` }}
+                          />
+                        )}
+                        {labPct > 0 && (
+                          <div
+                            className="h-full bg-[#F2A544]"
+                            style={{ width: `${labPct}%` }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Source Files List */}
+            {sourceBreakdown.by_file &&
+              Object.keys(sourceBreakdown.by_file).length > 0 && (
+                <div className="border-t border-[#343D43]/60 pt-4 lg:col-span-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+                  <div className="mb-3 text-xs font-medium text-[#F2F4F5]">
+                    Archivos públicos muestreados
+                  </div>
+                  <div className="divide-y divide-[#343D43]/55">
+                    {Object.entries(sourceBreakdown.by_file).map(
+                      ([fname, fileStats]) => (
+                        <div
+                          key={fname}
+                          className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0 text-xs"
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <FileSpreadsheet
+                              className="h-4 w-4 shrink-0 text-[#79ABFF]"
+                              strokeWidth={1.75}
+                              aria-hidden="true"
+                            />
+                            <span className="tech-mono truncate text-[#F2F4F5]">
+                              {fname}
+                            </span>
+                          </div>
+                          <span className="tabular-nums shrink-0 text-[#A1ABB3]">
+                            {fileStats.total_loaded.toLocaleString('es-ES')} filas
+                          </span>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
+              )}
+          </div>
+        </BentoCard>
+      )}
     </div>
   );
 }

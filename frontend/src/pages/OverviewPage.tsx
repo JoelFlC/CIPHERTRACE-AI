@@ -1,15 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  Activity,
-  AlertTriangle,
-  Clock,
-  Loader2,
-  Play,
-  Radio,
-  ShieldAlert,
-  Square,
-  TrendingUp,
-} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Activity, PieChart as PieChartIcon } from 'lucide-react';
 import {
   Area,
   AreaChart,
@@ -23,7 +13,15 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { RiskBadge } from '../components/RiskBadge';
+import { FlowsTable } from '../components/soc/FlowsTable';
+import { MetricStrip, type MetricItem } from '../components/soc/MetricStrip';
+import { SensorControlBar } from '../components/soc/SensorControlBar';
+import { AlertBanner } from '../components/ui/AlertBanner';
+import { BentoCard } from '../components/ui/BentoCard';
+import { ChartTooltip } from '../components/ui/ChartTooltip';
+import { EmptyState } from '../components/ui/EmptyState';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { SkeletonBlock, SkeletonMetricStrip } from '../components/ui/Skeleton';
 import {
   THREAT_COLORS,
   THREAT_LABELS,
@@ -45,6 +43,7 @@ interface OverviewPageProps {
   captureInterfaces: CaptureInterfacesResponse | null;
   captureBusy: boolean;
   captureError: string | null;
+  selectedFlowId?: string | null;
   onStartCapture: (iface: string, bpf: string, windowSeconds: number) => void;
   onStopCapture: () => void;
   onSelectFlow: (flow: AnalyzedFlow) => void;
@@ -91,19 +90,21 @@ function RiskAreaTooltip({ active, payload }: RiskTooltipProps) {
   if (!active || !payload || payload.length === 0) return null;
   const pt = payload[0].payload;
   return (
-    <div className="rounded-md border border-[#1F2937] bg-[#0B0F19] px-3 py-2 text-xs shadow-lg">
-      <div className="mono-num font-semibold text-cyan-300">
+    <ChartTooltip>
+      <div className="tabular-nums font-semibold text-[#79ABFF]">
         Risk Score: {pt.risk_score.toFixed(4)} ({pt.risk_level})
       </div>
-      <div className="mono-num mt-1 text-gray-300">{pt.route}</div>
-      <div className="mt-0.5 text-gray-400">
+      <div className="tech-mono mt-1 text-[#F2F4F5]">{pt.route}</div>
+      <div className="mt-1 text-[#A1ABB3]">
         Vector:{' '}
-        <span className="mono-num text-gray-200">{pt.predicted_threat}</span>
+        <span className="font-medium text-[#F2F4F5]">
+          {THREAT_LABELS[pt.predicted_threat] ?? pt.predicted_threat}
+        </span>
       </div>
-      <div className="mono-num mt-0.5 text-[11px] text-gray-500">
-        {pt.timeLabel} · {pt.flow_id}
+      <div className="tabular-nums mt-0.5 text-[11px] text-[#8E99A2]">
+        {pt.timeLabel} · <span className="tech-mono">{pt.flow_id}</span>
       </div>
-    </div>
+    </ChartTooltip>
   );
 }
 
@@ -111,22 +112,27 @@ function ThreatPieTooltip({ active, payload }: ThreatTooltipProps) {
   if (!active || !payload || payload.length === 0) return null;
   const slice = payload[0].payload;
   return (
-    <div className="rounded-md border border-[#1F2937] bg-[#0B0F19] px-3 py-2 text-xs shadow-lg">
-      <div className="flex items-center gap-2 font-medium text-gray-100">
+    <ChartTooltip>
+      <div className="flex items-center gap-2 font-medium text-[#F2F4F5]">
         <span
           className="h-2 w-2 rounded-full"
           style={{ backgroundColor: slice.color }}
         />
         <span>{slice.label}</span>
       </div>
-      <div className="mono-num mt-1 text-gray-300">
+      <div className="tabular-nums mt-1 text-[#A1ABB3]">
         {slice.value.toLocaleString('es-ES')} flujos ({slice.name})
       </div>
-    </div>
+    </ChartTooltip>
   );
 }
 
-const FILTER_OPTIONS: RiskFilter[] = ['TODOS', 'ALTO', 'MEDIO', 'BAJO'];
+const FILTER_OPTIONS: Array<{ value: RiskFilter; label: string }> = [
+  { value: 'TODOS', label: 'Todos' },
+  { value: 'ALTO', label: 'Alto' },
+  { value: 'MEDIO', label: 'Medio' },
+  { value: 'BAJO', label: 'Bajo' },
+];
 
 export function OverviewPage({
   summary,
@@ -138,28 +144,12 @@ export function OverviewPage({
   captureInterfaces,
   captureBusy,
   captureError,
+  selectedFlowId = null,
   onStartCapture,
   onStopCapture,
   onSelectFlow,
 }: OverviewPageProps) {
   const [riskFilter, setRiskFilter] = useState<RiskFilter>('TODOS');
-  const [selectedIface, setSelectedIface] = useState<string>('any');
-  const [bpfFilter, setBpfFilter] = useState<string>(
-    'tcp port 443 or tcp port 8443 or udp port 53 or tcp port 8000',
-  );
-  const [windowSeconds, setWindowSeconds] = useState<number>(4);
-
-  useEffect(() => {
-    if (captureInterfaces?.default_bpf_filter) {
-      setBpfFilter((prev) => prev || captureInterfaces.default_bpf_filter);
-    }
-    if (
-      captureInterfaces?.interfaces?.length &&
-      !captureInterfaces.interfaces.includes(selectedIface)
-    ) {
-      setSelectedIface(captureInterfaces.interfaces[0]);
-    }
-  }, [captureInterfaces, selectedIface]);
 
   const timelineData = useMemo<TimelinePoint[]>(() => {
     return [...flows]
@@ -189,7 +179,7 @@ export function OverviewPage({
       name: vec,
       label: THREAT_LABELS[vec] ?? vec,
       value: counts[vec] ?? 0,
-      color: THREAT_COLORS[vec] ?? '#6B7280',
+      color: THREAT_COLORS[vec] ?? '#8E99A2',
     }));
   }, [summary, flows]);
 
@@ -223,346 +213,164 @@ export function OverviewPage({
     summary?.anomaly_rate_pct ??
     (totalFlows > 0 ? (activeAlerts / totalFlows) * 100 : 0);
 
+  const benignFlowsCount =
+    summary?.risk_distribution?.BAJO ?? Math.max(0, totalFlows - activeAlerts);
+
+  const metricItems: MetricItem[] = [
+    {
+      id: 'total-flows',
+      label: 'Flujos analizados',
+      value: totalFlows.toLocaleString('es-ES'),
+      detail: (
+        <span>
+          Benignos (BAJO):{' '}
+          <span className="font-medium text-[#36C995]">
+            {benignFlowsCount.toLocaleString('es-ES')}
+          </span>
+        </span>
+      ),
+    },
+    {
+      id: 'active-alerts',
+      label: 'Alertas activas (Medio/Alto)',
+      value: activeAlerts.toLocaleString('es-ES'),
+      tone: criticalAlerts > 0 ? 'danger' : 'default',
+      detail: (
+        <span className="flex items-center gap-3">
+          <span className="text-[#F08A8D]">ALTO: {criticalAlerts}</span>
+          <span className="text-[#F2A544]">MEDIO: {mediumAlerts}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'avg-latency',
+      label: 'Latencia media de inferencia',
+      value: avgLatency.toFixed(2),
+      unit: 'ms',
+      tone: 'accent',
+      detail: 'Evaluación híbrida MLP + Autoencoder',
+    },
+    {
+      id: 'anomaly-rate',
+      label: 'Tasa de anomalía',
+      value: anomalyRate.toFixed(2),
+      unit: '%',
+      progress: {
+        pct: anomalyRate,
+        color:
+          anomalyRate >= 35
+            ? '#E56B6F'
+            : anomalyRate >= 15
+              ? '#F2A544'
+              : '#36C995',
+      },
+    },
+  ];
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {error && (
-        <div className="rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-300">
+        <AlertBanner variant="error">
           No se pudo sincronizar completamente con el backend: {error}
-        </div>
+        </AlertBanner>
       )}
 
-      {/* Hybrid Operation Bar: Live Passive Capture vs Offline */}
-      <section className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <span
-              className={`flex h-8 w-8 items-center justify-center rounded border ${
-                captureStatus?.running
-                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
-                  : 'border-cyan-500/30 bg-cyan-500/10 text-[#06B6D4]'
-              }`}
-            >
-              <Radio className="h-4 w-4" />
-            </span>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-sm font-semibold text-gray-100">
-                  Sensor Híbrido (Captura Pasiva En Vivo / Offline)
-                </h2>
-                <span
-                  className={`mono-num rounded border px-2 py-0.5 text-[10px] font-semibold ${
-                    captureStatus?.running
-                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                      : 'border-[#1F2937] bg-[#0B0F19] text-gray-400'
-                  }`}
-                >
-                  {captureStatus?.running ? 'MODO EN VIVO ACTIVO' : 'MODO OFFLINE / ESPERA'}
-                </span>
-              </div>
-              <p className="text-xs text-gray-400">
-                Sniffer pasivo por ventanas sin descifrar carga útil, complementario al Inspector PCAP/CSV
-              </p>
-            </div>
-          </div>
+      {/* Row 1: Unified KPI Strip */}
+      {loading && !summary && flows.length === 0 ? (
+        <SkeletonMetricStrip />
+      ) : (
+        <MetricStrip items={metricItems} />
+      )}
 
-          {captureStatus && (
-            <div className="mono-num flex flex-wrap items-center gap-4 text-xs text-gray-300">
-              <span>
-                Paquetes:{' '}
-                <strong className="text-gray-100">
-                  {captureStatus.packets_captured.toLocaleString('es-ES')}
-                </strong>
-              </span>
-              <span>
-                Flujos:{' '}
-                <strong className="text-cyan-300">
-                  {captureStatus.flows_evaluated.toLocaleString('es-ES')}
-                </strong>
-              </span>
-              <span>
-                Alertas:{' '}
-                <strong className="text-red-400">
-                  {captureStatus.alerts_triggered.toLocaleString('es-ES')}
-                </strong>
-              </span>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-3 grid grid-cols-1 gap-2.5 border-t border-[#1F2937] pt-3 lg:grid-cols-12">
-          <div className="lg:col-span-3">
-            <label
-              htmlFor="capture-iface"
-              className="mb-1 block text-[11px] text-gray-400"
-            >
-              Interfaz de red
-            </label>
-            <select
-              id="capture-iface"
-              disabled={captureStatus?.running || captureBusy}
-              value={selectedIface}
-              onChange={(e) => setSelectedIface(e.target.value)}
-              className="mono-num w-full rounded border border-[#1F2937] bg-[#0B0F19] px-2.5 py-1.5 text-xs text-gray-200 disabled:opacity-60"
-            >
-              {(captureInterfaces?.interfaces ?? ['any', 'lo']).map((iface) => (
-                <option key={iface} value={iface}>
-                  {iface}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="lg:col-span-5">
-            <label
-              htmlFor="capture-bpf"
-              className="mb-1 block text-[11px] text-gray-400"
-            >
-              Filtro BPF (solo puertos TLS/DNS/Lab)
-            </label>
-            <input
-              id="capture-bpf"
-              type="text"
-              disabled={captureStatus?.running || captureBusy}
-              value={bpfFilter}
-              onChange={(e) => setBpfFilter(e.target.value)}
-              className="mono-num w-full rounded border border-[#1F2937] bg-[#0B0F19] px-2.5 py-1.5 text-xs text-gray-200 disabled:opacity-60"
-            />
-          </div>
-
-          <div className="lg:col-span-2">
-            <label
-              htmlFor="capture-window"
-              className="mb-1 block text-[11px] text-gray-400"
-            >
-              Ventana (s)
-            </label>
-            <select
-              id="capture-window"
-              disabled={captureStatus?.running || captureBusy}
-              value={windowSeconds}
-              onChange={(e) => setWindowSeconds(Number(e.target.value))}
-              className="mono-num w-full rounded border border-[#1F2937] bg-[#0B0F19] px-2.5 py-1.5 text-xs text-gray-200 disabled:opacity-60"
-            >
-              <option value={3}>3 s</option>
-              <option value={4}>4 s</option>
-              <option value={5}>5 s</option>
-              <option value={10}>10 s</option>
-            </select>
-          </div>
-
-          <div className="flex items-end lg:col-span-2">
-            {captureStatus?.running ? (
-              <button
-                type="button"
-                disabled={captureBusy}
-                onClick={onStopCapture}
-                className="flex w-full items-center justify-center gap-1.5 rounded border border-red-500/40 bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/25 disabled:opacity-50"
-              >
-                {captureBusy ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Square className="h-3.5 w-3.5" />
-                )}
-                <span>Detener En Vivo</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={captureBusy || captureInterfaces?.can_capture === false}
-                onClick={() =>
-                  onStartCapture(selectedIface, bpfFilter, windowSeconds)
-                }
-                className="flex w-full items-center justify-center gap-1.5 rounded border border-cyan-500/40 bg-cyan-500/15 px-3 py-1.5 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {captureBusy ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Play className="h-3.5 w-3.5" />
-                )}
-                <span>Iniciar En Vivo</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {(captureError || captureStatus?.last_error || captureInterfaces?.can_capture === false) && (
-          <div className="mt-2.5 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
-            {captureError ??
-              captureStatus?.last_error ??
-              'Captura en vivo deshabilitada en este proceso (requiere CAP_NET_RAW / Docker Compose). El modo offline PCAP/CSV y el laboratorio AiTM siguen operativos.'}
-          </div>
-        )}
-      </section>
-
-      {/* Row 1: 4 KPI Cards */}
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
-          <div className="flex items-center justify-between text-xs text-gray-400">
-            <span>Flujos Analizados</span>
-            <Activity className="h-4 w-4 text-[#06B6D4]" />
-          </div>
-          <div className="mono-num mt-2 text-2xl font-semibold text-gray-100">
-            {totalFlows.toLocaleString('es-ES')}
-          </div>
-          <div className="mono-num mt-1.5 text-[11px] text-gray-400">
-            Benignos (BAJO):{' '}
-            <span className="text-emerald-400">
-              {(summary?.risk_distribution?.BAJO ??
-                Math.max(0, totalFlows - activeAlerts)
-              ).toLocaleString('es-ES')}
-            </span>
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
-          <div className="flex items-center justify-between text-xs text-gray-400">
-            <span>Alertas Activas (Medio/Alto)</span>
-            <ShieldAlert className="h-4 w-4 text-[#EF4444]" />
-          </div>
-          <div className="mono-num mt-2 text-2xl font-semibold text-gray-100">
-            {activeAlerts.toLocaleString('es-ES')}
-          </div>
-          <div className="mono-num mt-1.5 flex items-center gap-3 text-[11px]">
-            <span className="text-red-400">ALTO: {criticalAlerts}</span>
-            <span className="text-amber-400">MEDIO: {mediumAlerts}</span>
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
-          <div className="flex items-center justify-between text-xs text-gray-400">
-            <span>Latencia Media de Inferencia</span>
-            <Clock className="h-4 w-4 text-[#06B6D4]" />
-          </div>
-          <div className="mono-num mt-2 text-2xl font-semibold text-cyan-300">
-            {avgLatency.toFixed(2)}{' '}
-            <span className="text-sm font-normal text-gray-400">ms</span>
-          </div>
-          <div className="mt-1.5 text-[11px] text-gray-400">
-            Evaluación híbrida MLP + Autoencoder
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
-          <div className="flex items-center justify-between text-xs text-gray-400">
-            <span>Tasa de Anomalía</span>
-            <AlertTriangle className="h-4 w-4 text-[#F59E0B]" />
-          </div>
-          <div className="mono-num mt-2 text-2xl font-semibold text-gray-100">
-            {anomalyRate.toFixed(2)}
-            <span className="text-sm font-normal text-gray-400">%</span>
-          </div>
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-sm bg-[#0B0F19]">
-            <div
-              className="h-full transition-all duration-300"
-              style={{
-                width: `${Math.min(100, Math.max(anomalyRate > 0 ? 3 : 0, anomalyRate))}%`,
-                backgroundColor:
-                  anomalyRate >= 35
-                    ? '#EF4444'
-                    : anomalyRate >= 15
-                      ? '#F59E0B'
-                      : '#10B981',
-              }}
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* Row 2: Live Charts */}
+      {/* Row 2: Asymmetric Bento Charts (7 : 5) */}
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        {/* Risk Score Evolution */}
-        <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4 xl:col-span-7">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
-                <TrendingUp className="h-4 w-4 text-[#06B6D4]" />
-                Evolución Temporal del Risk Score
-              </h2>
-              <p className="text-xs text-gray-400">
-                Últimos {timelineData.length} flujos evaluados en tiempo real
-                (umbral crítico {threshold.toFixed(2)})
-              </p>
-            </div>
-            <span className="mono-num rounded border border-[#1F2937] bg-[#0B0F19] px-2 py-0.5 text-[11px] text-gray-400">
+        <BentoCard
+          className="xl:col-span-7"
+          title="Evolución temporal del Risk Score"
+          subtitle={`Últimos ${timelineData.length} flujos evaluados en tiempo real (umbral crítico ${threshold.toFixed(2)})`}
+          action={
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-[#343D43] bg-[#272F35] px-2.5 py-1 text-[11px] font-medium text-[#A1ABB3]">
               WebSocket Live
             </span>
-          </div>
-
-          {timelineData.length === 0 ? (
-            <div className="flex h-64 items-center justify-center rounded border border-dashed border-[#1F2937] bg-[#0B0F19] text-xs text-gray-500">
-              {loading
-                ? 'Cargando telemetría de flujos...'
-                : 'Sin flujos aún. Ejecuta una simulación en Laboratorio AiTM o carga un archivo PCAP/CSV.'}
-            </div>
+          }
+        >
+          {loading && timelineData.length === 0 ? (
+            <SkeletonBlock className="h-64 w-full rounded-xl" />
+          ) : timelineData.length === 0 ? (
+            <EmptyState
+              icon={Activity}
+              title="Sin flujos evaluados todavía"
+              description="Inicia una captura en vivo abajo, simula tráfico en Laboratorio AiTM o carga una captura PCAP/CSV."
+            />
           ) : (
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height={256}>
                 <AreaChart
                   data={timelineData}
-                  margin={{ top: 8, right: 12, left: -16, bottom: 0 }}
+                  margin={{ top: 10, right: 20, left: -12, bottom: 0 }}
                 >
                   <defs>
-                    <linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#06B6D4" stopOpacity={0.32} />
-                      <stop offset="95%" stopColor="#06B6D4" stopOpacity={0.02} />
+                    <linearGradient id="riskFillBlue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#5795F2" stopOpacity={0.26} />
+                      <stop offset="95%" stopColor="#5795F2" stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid
-                    stroke="#1F2937"
+                    stroke="rgba(52, 61, 67, 0.45)"
                     strokeDasharray="3 3"
                     vertical={false}
                   />
                   <XAxis
                     dataKey="timeLabel"
-                    stroke="#6B7280"
-                    tick={{ fontSize: 11, fill: '#9CA3AF', fontFamily: 'JetBrains Mono' }}
-                    minTickGap={28}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: '#8E99A2' }}
+                    minTickGap={32}
                   />
                   <YAxis
                     domain={[0, 1]}
                     ticks={[0, 0.25, 0.5, 0.75, 1]}
-                    stroke="#6B7280"
-                    tick={{ fontSize: 11, fill: '#9CA3AF', fontFamily: 'JetBrains Mono' }}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: '#8E99A2' }}
                   />
                   <Tooltip content={<RiskAreaTooltip />} />
                   <ReferenceLine
                     y={threshold}
-                    stroke="#EF4444"
+                    stroke="#E56B6F"
                     strokeDasharray="4 4"
                     strokeOpacity={0.75}
                   />
                   <Area
                     type="monotone"
                     dataKey="risk_score"
-                    stroke="#06B6D4"
+                    stroke="#5795F2"
                     strokeWidth={2}
-                    fill="url(#riskFill)"
+                    fill="url(#riskFillBlue)"
                     isAnimationActive={false}
                   />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           )}
-        </div>
+        </BentoCard>
 
-        {/* Threat Vector Distribution */}
-        <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4 xl:col-span-5">
-          <div className="mb-3">
-            <h2 className="text-sm font-semibold text-gray-100">
-              Distribución por Vector de Amenaza
-            </h2>
-            <p className="text-xs text-gray-400">
-              Clasificación pasiva multiclase (MLP + Random Forest)
-            </p>
-          </div>
-
-          {totalThreatFlows === 0 ? (
-            <div className="flex h-64 items-center justify-center rounded border border-dashed border-[#1F2937] bg-[#0B0F19] text-xs text-gray-500">
-              Sin registros clasificados todavía.
-            </div>
+        <BentoCard
+          className="xl:col-span-5"
+          title="Distribución por vector de amenaza"
+          subtitle="Clasificación pasiva multiclase (MLP + Random Forest)"
+        >
+          {loading && totalThreatFlows === 0 ? (
+            <SkeletonBlock className="h-64 w-full rounded-xl" />
+          ) : totalThreatFlows === 0 ? (
+            <EmptyState
+              icon={PieChartIcon}
+              title="Sin registros clasificados"
+              description="La distribución multiclase aparecerá conforme se evalúen los primeros flujos."
+            />
           ) : (
-            <div className="grid grid-cols-1 items-center gap-3 sm:grid-cols-12">
-              <div className="h-56 sm:col-span-6">
+            <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-12">
+              <div className="h-56 sm:col-span-5">
                 <ResponsiveContainer width="100%" height={224}>
                   <PieChart>
                     <Pie
@@ -574,7 +382,7 @@ export function OverviewPage({
                       innerRadius={52}
                       outerRadius={80}
                       paddingAngle={2}
-                      stroke="#111827"
+                      stroke="#1C2226"
                       strokeWidth={2}
                       isAnimationActive={false}
                     >
@@ -589,31 +397,42 @@ export function OverviewPage({
                 </ResponsiveContainer>
               </div>
 
-              <div className="space-y-2 sm:col-span-6">
+              <div className="space-y-3 sm:col-span-7">
                 {threatDistribution.map((item) => {
                   const pct =
                     totalThreatFlows > 0
                       ? (item.value / totalThreatFlows) * 100
                       : 0;
                   return (
-                    <div
-                      key={item.name}
-                      className="flex items-center justify-between rounded border border-[#1F2937] bg-[#0B0F19] px-2.5 py-1.5 text-xs"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span
-                          className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                          style={{ backgroundColor: item.color }}
-                        />
-                        <span className="truncate text-gray-200">
-                          {item.label}
-                        </span>
+                    <div key={item.name} className="space-y-1">
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: item.color }}
+                            aria-hidden="true"
+                          />
+                          <span className="truncate text-[#F2F4F5]">
+                            {item.label}
+                          </span>
+                        </div>
+                        <div className="tabular-nums shrink-0 text-[#A1ABB3]">
+                          <strong className="font-medium text-[#F2F4F5]">
+                            {item.value.toLocaleString('es-ES')}
+                          </strong>{' '}
+                          <span className="text-[11px] text-[#8E99A2]">
+                            ({pct.toFixed(0)}%)
+                          </span>
+                        </div>
                       </div>
-                      <div className="mono-num ml-2 shrink-0 text-gray-300">
-                        {item.value}{' '}
-                        <span className="text-[11px] text-gray-500">
-                          ({pct.toFixed(0)}%)
-                        </span>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#272F35]">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${pct > 0 ? Math.max(2, pct) : 0}%`,
+                            backgroundColor: item.color,
+                          }}
+                        />
                       </div>
                     </div>
                   );
@@ -621,131 +440,42 @@ export function OverviewPage({
               </div>
             </div>
           )}
-        </div>
+        </BentoCard>
       </section>
 
-      {/* Row 3: Real-Time Flows & Alerts Table */}
-      <section className="rounded-lg border border-[#1F2937] bg-[#111827]">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1F2937] px-4 py-3">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-100">
-              Flujos y Alertas en Tiempo Real
-            </h2>
-            <p className="text-xs text-gray-400">
-              Haz clic en cualquier fila para abrir el panel de explicabilidad
-              (XAI)
-            </p>
-          </div>
+      {/* Row 3: Direct-Access Hybrid Capture Bar */}
+      <SensorControlBar
+        captureStatus={captureStatus}
+        captureInterfaces={captureInterfaces}
+        captureBusy={captureBusy}
+        captureError={captureError}
+        onStartCapture={onStartCapture}
+        onStopCapture={onStopCapture}
+      />
 
-          <div
-            className="inline-flex rounded-md border border-[#1F2937] bg-[#0B0F19] p-0.5"
-            role="group"
-            aria-label="Filtrar por nivel de riesgo"
-          >
-            {FILTER_OPTIONS.map((option) => {
-              const active = riskFilter === option;
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setRiskFilter(option)}
-                  className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-                    active
-                      ? 'bg-[#1F2937] text-cyan-300'
-                      : 'text-gray-400 hover:text-gray-200'
-                  }`}
-                >
-                  {option}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] border-collapse text-left text-xs">
-            <thead>
-              <tr className="border-b border-[#1F2937] bg-[#0D1321] text-[11px] font-medium uppercase tracking-wider text-gray-400">
-                <th className="px-4 py-2.5">Timestamp</th>
-                <th className="px-4 py-2.5">Origen → Destino</th>
-                <th className="px-4 py-2.5">Vector Detectado</th>
-                <th className="px-4 py-2.5 text-right">Score MLP</th>
-                <th className="px-4 py-2.5 text-right">Anomalía AE</th>
-                <th className="px-4 py-2.5 text-right">Riesgo Final</th>
-                <th className="px-4 py-2.5">Nivel</th>
-                <th className="px-4 py-2.5 text-right">Latencia</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#1F2937]">
-              {filteredFlows.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={8}
-                    className="px-4 py-10 text-center text-xs text-gray-500"
-                  >
-                    No hay flujos que coincidan con el filtro seleccionado (
-                    {riskFilter}).
-                  </td>
-                </tr>
-              ) : (
-                filteredFlows.map((flow) => {
-                  const vecColor =
-                    THREAT_COLORS[flow.predicted_threat] ?? '#9CA3AF';
-                  return (
-                    <tr
-                      key={`${flow.id}-${flow.flow_id}`}
-                      onClick={() => onSelectFlow(flow)}
-                      className="cursor-pointer transition-colors hover:bg-[#1F2937]/45"
-                    >
-                      <td className="mono-num whitespace-nowrap px-4 py-2.5 text-gray-400">
-                        {formatClockTime(flow.timestamp_utc)}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="mono-num text-gray-200">
-                          {flow.src_ip}:{flow.src_port} → {flow.dst_ip}:
-                          {flow.dst_port}
-                        </div>
-                        {flow.sni && (
-                          <div className="mono-num max-w-xs truncate text-[11px] text-gray-500">
-                            SNI: {flow.sni}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span
-                          className="mono-num inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px]"
-                          style={{
-                            color: vecColor,
-                            borderColor: `${vecColor}40`,
-                            backgroundColor: `${vecColor}14`,
-                          }}
-                        >
-                          {flow.predicted_threat}
-                        </span>
-                      </td>
-                      <td className="mono-num px-4 py-2.5 text-right text-gray-300">
-                        {flow.prob_mlp.toFixed(3)}
-                      </td>
-                      <td className="mono-num px-4 py-2.5 text-right text-gray-300">
-                        {flow.anomaly_ae.toFixed(3)}
-                      </td>
-                      <td className="mono-num px-4 py-2.5 text-right font-semibold text-gray-100">
-                        {flow.risk_score.toFixed(3)}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <RiskBadge level={flow.risk_level} />
-                      </td>
-                      <td className="mono-num whitespace-nowrap px-4 py-2.5 text-right text-cyan-300">
-                        {flow.inference_latency_ms.toFixed(2)} ms
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {/* Row 4: Real-Time Flows & Alerts Table */}
+      <BentoCard
+        noPadding
+        title="Flujos y alertas en tiempo real"
+        subtitle="Selecciona cualquier fila (clic o Enter) para abrir el panel de explicabilidad XAI"
+        action={
+          <SegmentedControl
+            options={FILTER_OPTIONS}
+            value={riskFilter}
+            onChange={setRiskFilter}
+            ariaLabel="Filtrar flujos por nivel de riesgo"
+          />
+        }
+      >
+        <FlowsTable
+          flows={filteredFlows}
+          onSelectFlow={onSelectFlow}
+          selectedFlowId={selectedFlowId}
+          loading={loading}
+          emptyTitle="Sin flujos para el filtro actual"
+          emptyDescription={`No hay flujos clasificados con nivel ${riskFilter}.`}
+        />
+      </BentoCard>
     </div>
   );
 }

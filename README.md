@@ -1,17 +1,19 @@
 <div align="center">
 
-# CIPHERTRACE AI
+<br />
+<img src="docs/baseline/logo2.png" alt="CIPHERTRACE AI" width="520" />
+<br /><br />
 
 **Detección Pasiva de Amenazas en Tráfico Cifrado con IA Híbrida, Algoritmo Genético, Explicabilidad (XAI) y Laboratorio AiTM**
 
-[![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-CPU-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![React 18](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![PostgreSQL 16](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Docker Compose](https://img.shields.io/badge/Docker_Compose-Ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-5795F2?style=flat-square&labelColor=1C2226&logo=python&logoColor=F2F4F5)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-36C995?style=flat-square&labelColor=1C2226&logo=fastapi&logoColor=101416)](https://fastapi.tiangolo.com/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-CPU-F2A544?style=flat-square&labelColor=1C2226&logo=pytorch&logoColor=101416)](https://pytorch.org/)
+[![React 18](https://img.shields.io/badge/React-18-79ABFF?style=flat-square&labelColor=1C2226&logo=react&logoColor=101416)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-5795F2?style=flat-square&labelColor=1C2226&logo=typescript&logoColor=F2F4F5)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-5795F2?style=flat-square&labelColor=1C2226&logo=tailwindcss&logoColor=F2F4F5)](https://tailwindcss.com/)
+[![PostgreSQL 16](https://img.shields.io/badge/PostgreSQL-16-272F35?style=flat-square&labelColor=1C2226&logo=postgresql&logoColor=F2F4F5)](https://www.postgresql.org/)
+[![Docker Compose](https://img.shields.io/badge/Docker_Compose-Ready-36C995?style=flat-square&labelColor=1C2226&logo=docker&logoColor=101416)](https://docs.docker.com/compose/)
 
 </div>
 
@@ -36,13 +38,36 @@ En lugar de romper el cifrado de las comunicaciones, el motor extrae **18 caract
 ## Arquitectura y Funcionamiento
 
 ```mermaid
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "background": "#101416",
+    "primaryColor": "#1C2226",
+    "primaryTextColor": "#F2F4F5",
+    "primaryBorderColor": "#343D43",
+    "lineColor": "#5795F2",
+    "secondaryColor": "#272F35",
+    "tertiaryColor": "#151A1E",
+    "fontFamily": "Inter, system-ui, sans-serif"
+  }
+}}%%
 flowchart LR
-    A["Fuentes de Tráfico\n(Captura en vivo / PCAP / CSV / Simulador / Proxy AiTM)"] --> B["Extractor Pasivo\n(Scapy + Pandas · 18 Atributos)"]
-    B --> C["Selección Genética\n(Máscara AG: 18 → 8 Atributos)"]
-    C --> D["Motor Híbrido ML/DL\nMLP + PyTorch Autoencoder\n+ Random Forest + Isolation Forest"]
-    D --> E["Explicabilidad (XAI)\nz-score vs Línea Base Benigna"]
-    E --> F["PostgreSQL / SQLite\n+ WebSocket /ws/alerts"]
-    F --> G["Consola SOC\n(React + Recharts + Tailwind)"]
+    A["Fuentes de Tráfico<br/>(Captura en vivo / PCAP / CSV / Simulador / Proxy AiTM)"] --> B["Extractor Pasivo<br/>(Scapy + Pandas · 18 Atributos)"]
+    B --> C["Selección Genética<br/>(Máscara AG: 18 → 8 Atributos)"]
+    C --> D["Motor Híbrido ML/DL<br/>MLP + PyTorch Autoencoder<br/>+ Random Forest + Isolation Forest"]
+    D --> E["Explicabilidad (XAI)<br/>z-score vs Línea Base Benigna"]
+    E --> F["PostgreSQL / SQLite<br/>+ WebSocket /ws/alerts"]
+    F --> G["Consola SOC · Dark Bento Grid<br/>(React + Recharts + Tailwind)"]
+
+    classDef surface fill:#1C2226,stroke:#343D43,stroke-width:1.5px,color:#F2F4F5
+    classDef accent fill:#1C2226,stroke:#5795F2,stroke-width:1.5px,color:#F2F4F5
+    classDef success fill:#1C2226,stroke:#36C995,stroke-width:1.5px,color:#F2F4F5
+    classDef secondary fill:#272F35,stroke:#343D43,stroke-width:1.5px,color:#F2F4F5
+
+    class A,F secondary
+    class B,E surface
+    class C,D accent
+    class G success
 ```
 
 ### Motor IA & Optimización con Algoritmo Genético
@@ -244,13 +269,18 @@ CIPHERTRACE-AI/
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── components/     # Sidebar, RiskBadge, FlowDetailDrawer (XAI)
+│   │   ├── assets/         # Identidad visual (logo.png)
+│   │   ├── components/
+│   │   │   ├── ui/         # Primitivas Dark Bento Grid (BentoCard, Button, SegmentedControl, Skeleton)
+│   │   │   └── soc/        # Sidebar, Header, MetricStrip, FlowsTable, RiskBadge, ThreatBadge, FlowDetailDrawer
 │   │   ├── pages/          # OverviewPage, ThreatLabPage, ModelAnalyticsPage, FileInspectorPage
 │   │   ├── services/       # Cliente REST y hook useAlertWebSocket
 │   │   └── types/          # Tipos TypeScript alineados con la API
 │   ├── Dockerfile
 │   └── nginx.conf
 ├── demo_samples/           # mixed_traffic_demo.csv y sample_capture.pcap
+├── DESIGN.md               # Fuente de verdad del sistema de diseño Dark Bento Grid
+├── REDESIGN_PLAN.md        # Auditoría UI/UX y plan por etapas
 ├── docker-compose.yml
 └── README.md
 ```

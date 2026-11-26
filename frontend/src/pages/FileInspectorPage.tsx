@@ -1,27 +1,37 @@
 import { useMemo, useRef, useState, type DragEvent } from 'react';
 import {
-  AlertCircle,
   FileCode2,
   FileUp,
+  FolderOpen,
   Loader2,
+  Lock,
   ShieldCheck,
 } from 'lucide-react';
-import { RiskBadge } from '../components/RiskBadge';
+import { FlowsTable } from '../components/soc/FlowsTable';
+import { MetricStrip, type MetricItem } from '../components/soc/MetricStrip';
+import { AlertBanner } from '../components/ui/AlertBanner';
+import { BentoCard } from '../components/ui/BentoCard';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { analyzeFile } from '../services/api';
-import {
-  THREAT_COLORS,
-  type AnalyzedFlow,
-  type FileAnalysisResponse,
-  type RiskFilter,
+import type {
+  AnalyzedFlow,
+  FileAnalysisResponse,
+  RiskFilter,
 } from '../types/ciphertrace';
 
 interface FileInspectorPageProps {
+  selectedFlowId?: string | null;
   onSelectFlow: (flow: AnalyzedFlow) => void;
   onAnalysisComplete?: () => void;
 }
 
 const ACCEPTED_EXTENSIONS = ['.pcap', '.pcapng', '.csv'];
-const FILTER_OPTIONS: RiskFilter[] = ['TODOS', 'ALTO', 'MEDIO', 'BAJO'];
+const FILTER_OPTIONS: Array<{ value: RiskFilter; label: string }> = [
+  { value: 'TODOS', label: 'Todos' },
+  { value: 'ALTO', label: 'Alto' },
+  { value: 'MEDIO', label: 'Medio' },
+  { value: 'BAJO', label: 'Bajo' },
+];
 
 function isValidCaptureFile(filename: string): boolean {
   const lower = filename.toLowerCase();
@@ -35,6 +45,7 @@ function formatBytes(bytes: number): string {
 }
 
 export function FileInspectorPage({
+  selectedFlowId = null,
   onSelectFlow,
   onAnalysisComplete,
 }: FileInspectorPageProps) {
@@ -100,279 +111,268 @@ export function FileInspectorPage({
       ? (maliciousCount / result.total_flows_analyzed) * 100
       : 0;
 
+  const metricItems: MetricItem[] = result
+    ? [
+        {
+          id: 'file-name',
+          label: 'Archivo procesado',
+          value: result.total_flows_analyzed.toLocaleString('es-ES'),
+          unit: 'flujos',
+          detail: (
+            <span className="tech-mono block truncate text-[#79ABFF]">
+              {result.filename}
+            </span>
+          ),
+        },
+        {
+          id: 'malicious-count',
+          label: 'Maliciosos / Sospechosos',
+          value: maliciousCount.toLocaleString('es-ES'),
+          tone: maliciousCount > 0 ? 'danger' : 'success',
+          detail: (
+            <span className="flex items-center gap-3">
+              <span className="text-[#F08A8D]">
+                ALTO: {result.risk_summary?.ALTO ?? 0}
+              </span>
+              <span className="text-[#F2A544]">
+                MEDIO: {result.risk_summary?.MEDIO ?? 0}
+              </span>
+            </span>
+          ),
+        },
+        {
+          id: 'analysis-time',
+          label: 'Tiempo total de análisis',
+          value: elapsedMs.toFixed(0),
+          unit: 'ms',
+          tone: 'accent',
+          detail: `${result.alerts_triggered} alertas persistidas`,
+        },
+        {
+          id: 'threat-rate',
+          label: 'Proporción de amenaza',
+          value: maliciousRate.toFixed(1),
+          unit: '%',
+          detail: (
+            <span className="text-[#36C995]">
+              Benignos (BAJO): {result.risk_summary?.BAJO ?? 0}
+            </span>
+          ),
+        },
+      ]
+    : [];
+
   return (
-    <div className="space-y-5">
-      {/* Drag & Drop Upload Zone */}
-      <section className="rounded-lg border border-[#1F2937] bg-[#111827] p-5">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-100">
-              Inspector Pasivo de Capturas PCAP / CSV
-            </h2>
-            <p className="text-xs text-gray-400">
+    <div className="space-y-6">
+      {/* Row 1: Asymmetric Bento Upload (8) + Passive Scope Reference (4) */}
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <BentoCard
+          className="xl:col-span-8"
+          title="Inspector pasivo de capturas PCAP / CSV"
+          subtitle={
+            <span>
               Extracción de flujos TLS y evaluación sin descifrado mediante{' '}
-              <span className="mono-num">POST /api/analyze/file</span>
-            </p>
-          </div>
-          <span className="inline-flex items-center gap-1.5 rounded border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-300">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Formatos: .pcap, .pcapng, .csv
-          </span>
-        </div>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pcap,.pcapng,.csv"
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) {
-              void processUpload(file);
-            }
-            event.target.value = '';
-          }}
-        />
-
-        <div
-          onDragOver={(event) => {
-            event.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={handleDrop}
-          onClick={() => {
-            if (!isAnalyzing) fileInputRef.current?.click();
-          }}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(event) => {
-            if ((event.key === 'Enter' || event.key === ' ') && !isAnalyzing) {
-              event.preventDefault();
-              fileInputRef.current?.click();
-            }
-          }}
-          className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors ${
-            isDragging
-              ? 'border-[#06B6D4] bg-cyan-500/10'
-              : 'border-[#1F2937] bg-[#0B0F19] hover:border-gray-600'
-          } ${isAnalyzing ? 'pointer-events-none opacity-80' : ''}`}
+              <span className="tech-mono text-[#F2F4F5]">
+                POST /api/analyze/file
+              </span>
+            </span>
+          }
+          action={
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-[#5795F2]/30 bg-[#5795F2]/14 px-2.5 py-1 text-xs font-medium text-[#79ABFF]">
+              <ShieldCheck className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+              .pcap · .pcapng · .csv
+            </span>
+          }
         >
-          {isAnalyzing ? (
-            <>
-              <Loader2 className="h-9 w-9 animate-spin text-[#06B6D4]" />
-              <div className="mt-3 text-sm font-medium text-gray-100">
-                Analizando{' '}
-                <span className="mono-num text-cyan-300">
-                  {selectedFile?.name}
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-gray-400">
-                Extrayendo metadatos pasivos y ejecutando inferencia híbrida
-                MLP + Autoencoder...
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-cyan-500/30 bg-cyan-500/10 text-[#06B6D4]">
-                <FileUp className="h-5 w-5" />
-              </div>
-              <div className="mt-3 text-sm font-medium text-gray-100">
-                Arrastra tu captura <span className="mono-num">.pcap</span> o{' '}
-                <span className="mono-num">.csv</span> aquí, o haz clic para
-                seleccionarla
-              </div>
-              <p className="mt-1 text-xs text-gray-400">
-                El backend evalúa cada flujo extraído y emite alertas en vivo
-                hacia el SOC.
-              </p>
-              {selectedFile && (
-                <div className="mono-num mt-3 inline-flex items-center gap-2 rounded border border-[#1F2937] bg-[#111827] px-3 py-1 text-xs text-gray-300">
-                  <FileCode2 className="h-3.5 w-3.5 text-[#06B6D4]" />
-                  <span>
-                    Último archivo: {selectedFile.name} (
-                    {formatBytes(selectedFile.size)})
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pcap,.pcapng,.csv"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                void processUpload(file);
+              }
+              event.target.value = '';
+            }}
+          />
+
+          <div
+            onDragOver={(event) => {
+              event.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDrop}
+            onClick={() => {
+              if (!isAnalyzing) fileInputRef.current?.click();
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label="Seleccionar o arrastrar captura PCAP o CSV para analizar"
+            onKeyDown={(event) => {
+              if (
+                (event.key === 'Enter' || event.key === ' ') &&
+                !isAnalyzing
+              ) {
+                event.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+            className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-6 py-10 text-center transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5795F2]/75 ${
+              isDragging
+                ? 'border-[#5795F2] bg-[#5795F2]/12'
+                : 'border-[#343D43] bg-[#101416]/55 hover:border-[#5795F2]/50 hover:bg-[#272F35]/40'
+            } ${isAnalyzing ? 'pointer-events-none opacity-80' : ''}`}
+          >
+            {isAnalyzing ? (
+              <>
+                <Loader2
+                  className="h-8 w-8 animate-spin text-[#5795F2]"
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                />
+                <div className="mt-3 text-sm font-medium text-[#F2F4F5]">
+                  Analizando{' '}
+                  <span className="tech-mono text-[#79ABFF]">
+                    {selectedFile?.name}
                   </span>
                 </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {error && (
-          <div className="mt-4 flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-300">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{error}</span>
+                <p className="mt-1 text-xs text-[#A1ABB3]">
+                  Extrayendo metadatos pasivos y ejecutando inferencia híbrida
+                  MLP + Autoencoder...
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#5795F2]/30 bg-[#5795F2]/14 text-[#79ABFF]">
+                  <FileUp className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                </div>
+                <div className="mt-3 text-sm font-medium text-[#F2F4F5]">
+                  Arrastra tu captura{' '}
+                  <span className="tech-mono text-[#79ABFF]">.pcap</span> o{' '}
+                  <span className="tech-mono text-[#79ABFF]">.csv</span> aquí, o
+                  haz clic para seleccionarla
+                </div>
+                <p className="mt-1 text-xs text-[#A1ABB3]">
+                  El backend evalúa cada flujo extraído y emite alertas en vivo
+                  hacia la consola SOC.
+                </p>
+                {selectedFile && (
+                  <div className="tech-mono mt-4 inline-flex items-center gap-2 rounded-[10px] border border-[#343D43] bg-[#272F35] px-3 py-1.5 text-xs text-[#F2F4F5]">
+                    <FileCode2
+                      className="h-3.5 w-3.5 text-[#79ABFF]"
+                      strokeWidth={1.75}
+                      aria-hidden="true"
+                    />
+                    <span>
+                      Último archivo: {selectedFile.name} (
+                      {formatBytes(selectedFile.size)})
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
           </div>
-        )}
-      </section>
 
-      {/* Analysis Summary + Results Table */}
-      {result && (
-        <>
-          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
-              <div className="text-xs text-gray-400">Archivo Procesado</div>
-              <div className="mono-num mt-1.5 truncate text-sm font-semibold text-gray-100">
-                {result.filename}
-              </div>
-              <div className="mono-num mt-1 text-xs text-cyan-300">
-                {result.total_flows_analyzed.toLocaleString('es-ES')} flujos
-                extraídos
-              </div>
-            </div>
+          {error && (
+            <AlertBanner variant="error" className="mt-4">
+              {error}
+            </AlertBanner>
+          )}
+        </BentoCard>
 
-            <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
-              <div className="text-xs text-gray-400">
-                Maliciosos / Sospechosos
-              </div>
-              <div className="mono-num mt-1.5 text-2xl font-semibold text-red-400">
-                {maliciousCount.toLocaleString('es-ES')}
-              </div>
-              <div className="mono-num mt-1 flex items-center gap-3 text-[11px]">
-                <span className="text-red-400">
-                  ALTO: {result.risk_summary?.ALTO ?? 0}
-                </span>
-                <span className="text-amber-400">
-                  MEDIO: {result.risk_summary?.MEDIO ?? 0}
-                </span>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
-              <div className="text-xs text-gray-400">
-                Tiempo Total de Análisis
-              </div>
-              <div className="mono-num mt-1.5 text-2xl font-semibold text-cyan-300">
-                {elapsedMs.toFixed(0)}{' '}
-                <span className="text-sm font-normal text-gray-400">ms</span>
-              </div>
-              <div className="mono-num mt-1 text-[11px] text-gray-400">
-                {result.alerts_triggered} alertas persistidas
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-[#1F2937] bg-[#111827] p-4">
-              <div className="text-xs text-gray-400">
-                Proporción de Amenaza
-              </div>
-              <div className="mono-num mt-1.5 text-2xl font-semibold text-gray-100">
-                {maliciousRate.toFixed(1)}
-                <span className="text-sm font-normal text-gray-400">%</span>
-              </div>
-              <div className="mono-num mt-1 text-[11px] text-emerald-400">
-                Benignos (BAJO): {result.risk_summary?.BAJO ?? 0}
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-lg border border-[#1F2937] bg-[#111827]">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1F2937] px-4 py-3">
+        <BentoCard
+          className="flex flex-col justify-between xl:col-span-4"
+          title="Alcance del análisis offline"
+          subtitle="Inspección forense sin claves privadas ni proxy TLS"
+          headerDivider
+        >
+          <div className="divide-y divide-[#343D43]/55 text-xs">
+            <div className="flex gap-3 pb-3">
+              <Lock
+                className="mt-0.5 h-4 w-4 shrink-0 text-[#79ABFF]"
+                strokeWidth={1.75}
+                aria-hidden="true"
+              />
               <div>
-                <h3 className="text-sm font-semibold text-gray-100">
-                  Resultados Flujo por Flujo ({filteredFlows.length})
-                </h3>
-                <p className="text-xs text-gray-400">
-                  Haz clic en cualquier flujo para revisar scores por modelo y
-                  explicabilidad XAI
+                <div className="font-medium text-[#F2F4F5]">
+                  18 atributos pasivos observables
+                </div>
+                <p className="mt-0.5 leading-relaxed text-[#A1ABB3]">
+                  Calcula IAT, tamaños de paquete, asimetría, entropía SNI y
+                  latencia sin descifrar el payload.
                 </p>
               </div>
+            </div>
 
-              <div className="inline-flex rounded-md border border-[#1F2937] bg-[#0B0F19] p-0.5">
-                {FILTER_OPTIONS.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setRiskFilter(option)}
-                    className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-                      riskFilter === option
-                        ? 'bg-[#1F2937] text-cyan-300'
-                        : 'text-gray-400 hover:text-gray-200'
-                    }`}
-                  >
-                    {option}
-                  </button>
-                ))}
+            <div className="flex gap-3 py-3">
+              <ShieldCheck
+                className="mt-0.5 h-4 w-4 shrink-0 text-[#36C995]"
+                strokeWidth={1.75}
+                aria-hidden="true"
+              />
+              <div>
+                <div className="font-medium text-[#F2F4F5]">
+                  Evaluación con ensamble AG
+                </div>
+                <p className="mt-0.5 leading-relaxed text-[#A1ABB3]">
+                  Aplica la máscara óptima de 8 atributos y pondera MLP +
+                  Autoencoder para cada flujo.
+                </p>
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[880px] border-collapse text-left text-xs">
-                <thead>
-                  <tr className="border-b border-[#1F2937] bg-[#0D1321] text-[11px] font-medium uppercase tracking-wider text-gray-400">
-                    <th className="px-4 py-2.5">Flow ID</th>
-                    <th className="px-4 py-2.5">Origen → Destino</th>
-                    <th className="px-4 py-2.5">Vector</th>
-                    <th className="px-4 py-2.5 text-right">MLP</th>
-                    <th className="px-4 py-2.5 text-right">Autoencoder</th>
-                    <th className="px-4 py-2.5 text-right">Riesgo Final</th>
-                    <th className="px-4 py-2.5">Nivel</th>
-                    <th className="px-4 py-2.5 text-right">Latencia</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#1F2937]">
-                  {filteredFlows.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className="px-4 py-8 text-center text-xs text-gray-500"
-                      >
-                        No hay flujos en este archivo para el filtro{' '}
-                        {riskFilter}.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredFlows.map((flow) => {
-                      const vecColor =
-                        THREAT_COLORS[flow.predicted_threat] ?? '#9CA3AF';
-                      return (
-                        <tr
-                          key={`${flow.id}-${flow.flow_id}`}
-                          onClick={() => onSelectFlow(flow)}
-                          className="cursor-pointer transition-colors hover:bg-[#1F2937]/45"
-                        >
-                          <td className="mono-num px-4 py-2.5 text-gray-300">
-                            {flow.flow_id}
-                          </td>
-                          <td className="mono-num px-4 py-2.5 text-gray-200">
-                            {flow.src_ip}:{flow.src_port} → {flow.dst_ip}:
-                            {flow.dst_port}
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <span
-                              className="mono-num rounded border px-2 py-0.5 text-[11px]"
-                              style={{
-                                color: vecColor,
-                                borderColor: `${vecColor}40`,
-                                backgroundColor: `${vecColor}14`,
-                              }}
-                            >
-                              {flow.predicted_threat}
-                            </span>
-                          </td>
-                          <td className="mono-num px-4 py-2.5 text-right text-gray-300">
-                            {flow.prob_mlp.toFixed(3)}
-                          </td>
-                          <td className="mono-num px-4 py-2.5 text-right text-gray-300">
-                            {flow.anomaly_ae.toFixed(3)}
-                          </td>
-                          <td className="mono-num px-4 py-2.5 text-right font-semibold text-gray-100">
-                            {flow.risk_score.toFixed(3)}
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <RiskBadge level={flow.risk_level} />
-                          </td>
-                          <td className="mono-num px-4 py-2.5 text-right text-cyan-300">
-                            {flow.inference_latency_ms.toFixed(2)} ms
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+            <div className="flex gap-3 pt-3">
+              <FolderOpen
+                className="mt-0.5 h-4 w-4 shrink-0 text-[#A1ABB3]"
+                strokeWidth={1.75}
+                aria-hidden="true"
+              />
+              <div className="min-w-0">
+                <div className="font-medium text-[#F2F4F5]">
+                  Muestras disponibles en el proyecto
+                </div>
+                <div className="tech-mono mt-1 space-y-1 text-[11px] text-[#8E99A2]">
+                  <div className="truncate">demo_samples/sample_capture.pcap</div>
+                  <div className="truncate">
+                    demo_samples/mixed_traffic_demo.csv
+                  </div>
+                </div>
+              </div>
             </div>
-          </section>
+          </div>
+        </BentoCard>
+      </section>
+
+      {/* Row 2: Analysis Summary & Results Table */}
+      {result && (
+        <>
+          <MetricStrip items={metricItems} />
+
+          <BentoCard
+            noPadding
+            title={`Resultados flujo por flujo (${filteredFlows.length})`}
+            subtitle="Selecciona cualquier flujo (clic o Enter) para revisar scores por modelo y explicabilidad XAI"
+            action={
+              <SegmentedControl
+                options={FILTER_OPTIONS}
+                value={riskFilter}
+                onChange={setRiskFilter}
+                ariaLabel="Filtrar resultados por nivel de riesgo"
+              />
+            }
+          >
+            <FlowsTable
+              flows={filteredFlows}
+              firstColumn="flow_id"
+              selectedFlowId={selectedFlowId}
+              onSelectFlow={onSelectFlow}
+              emptyTitle="Sin flujos para el filtro actual"
+              emptyDescription={`No hay flujos en este archivo con nivel ${riskFilter}.`}
+            />
+          </BentoCard>
         </>
       )}
     </div>
